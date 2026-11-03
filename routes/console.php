@@ -59,6 +59,17 @@ Schedule::command('app:send-target-performance-emails')
     ->timezone($scheduleTimezone)
     ->withoutOverlapping();
 
+// Run automated birthday and holiday greetings check every minute (filters internally by send_time)
+Schedule::command('greetings:send-automated')
+    ->everyMinute()
+    ->withoutOverlapping();
+
+// Daily HR Document Expiry Check (30, 15, 7, 0 days)
+Schedule::command('hr:check-document-expiries')
+    ->dailyAt('08:00')
+    ->timezone($scheduleTimezone)
+    ->withoutOverlapping();
+
 /*
 Schedule::command('app:send-hot-enquiry-no-activity')
     ->hourly()

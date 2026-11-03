@@ -192,10 +192,13 @@ class DashboardService
      * Both honour the same team scope as the rest of the dashboard (globalTeam).
      *
      * @param  array<int, int>|null  $scopeIds  null = whole company
-     * @return array{newLeadsToday: int, newDealClosed: array<string, mixed>|null}
+     * @param  int|null  $currentUserId
+     * @return array{newLeadsToday: int, newDealClosed: array<string, mixed>|null, birthdayGreeting: array<string, mixed>|null}
      */
-    protected function dashboardPopups(?array $scopeIds): array
+    protected function dashboardPopups(?array $scopeIds, ?int $currentUserId = null): array
     {
+        $currentUserId = $currentUserId ?? ($scopeIds && count($scopeIds) === 1 ? $scopeIds[0] : (auth()->id() ?? user()?->id));
+
         $newLeadsToday = Enquiry::query()
             ->when($scopeIds !== null, fn ($q) => $q->whereIn('agentId', $scopeIds))
             ->whereBetween('created_at', [localDayStartUtc(), localDayEndUtc()])
@@ -209,9 +212,31 @@ class DashboardService
             ->latest('id')
             ->first();
 
+        $birthdayGreeting = null;
+        if ($currentUserId) {
+            $user = User::find($currentUserId);
+            if ($user && $user->date_of_birth) {
+                try {
+                    $dob = Carbon::parse($user->date_of_birth);
+                    $today = Carbon::today();
+                    if ($dob->month === $today->month && $dob->day === $today->day) {
+                        $birthdayGreeting = [
+                            'isBirthday' => true,
+                            'name' => $user->name,
+                            'message' => "Wishing you a very Happy Birthday, {$user->name}!",
+                            'date' => $today->toDateString(),
+                        ];
+                    }
+                } catch (\Exception $e) {
+                    // Ignore date parsing failure
+                }
+            }
+        }
+
         return [
             'newLeadsToday' => $newLeadsToday,
             'newDealClosed' => $closing ? $this->formatDealPopup($closing) : null,
+            'birthdayGreeting' => $birthdayGreeting,
         ];
     }
 
@@ -351,8 +376,8 @@ class DashboardService
             'myListingTasks' => $this->agentModuleTasks($userId, Constants::MODULE_PROPERTY, $applyDateFilter, $hasDateRange),
             'priorityActions' => $this->priorityActions($userId, $applyDateFilter, 50),
             // Celebration popups scoped to the agent's OWN record: their latest
-            // closed deal and their own new leads today (never a colleague's).
-            'popups' => $this->dashboardPopups([$userId]),
+            // closed deal, their own new leads today, and their birthday greeting.
+            'popups' => $this->dashboardPopups([$userId], $userId),
         ];
     }
 

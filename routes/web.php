@@ -21,3 +21,21 @@ Route::middleware('auth.logs')->group(function () {
     Route::post('/request-logs/{date}/delete', [RequestLogController::class, 'delete']);
     Route::post('/request-logs/{date}/reset', [RequestLogController::class, 'reset']);
 });
+
+// Public Storage Route
+Route::get('/storage/{path}', function ($path) {
+    $cleanPath = str_replace(['..', '\\'], '', $path);
+    $cleanPath = ltrim($cleanPath, '/');
+    $filePath = storage_path('app/public/' . $cleanPath);
+
+    if (file_exists($filePath)) {
+        return response()->file($filePath);
+    }
+
+    $altPath = storage_path('app/' . $cleanPath);
+    if (file_exists($altPath)) {
+        return response()->file($altPath);
+    }
+
+    abort(404);
+})->where('path', '.*');

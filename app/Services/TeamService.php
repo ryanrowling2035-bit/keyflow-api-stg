@@ -39,7 +39,34 @@ class TeamService
             }, '>=', (int) $minAgent);
         }
 
-        return $query->get();
+        $teams = $query->with(['members.user.role'])->get();
+
+        return $teams->map(function ($team) {
+            $manager = null;
+            if ($team->members) {
+                $mMember = $team->members->first(function ($member) {
+                    return $member->user && (
+                        ($member->user->role && strcasecmp($member->user->role->name, 'Manager') === 0)
+                        || $member->user->roleId == 2
+                    );
+                });
+                if ($mMember && $mMember->user) {
+                    $manager = [
+                        'id' => $mMember->user->id,
+                        'name' => $mMember->user->name,
+                        'email' => $mMember->user->email,
+                    ];
+                }
+            }
+
+            return [
+                'id' => $team->id,
+                'name' => $team->name,
+                'manager' => $manager,
+                'manager_name' => $manager ? $manager['name'] : null,
+                'managerName' => $manager ? $manager['name'] : null,
+            ];
+        });
     }
 
     public function getAll(Request $request)

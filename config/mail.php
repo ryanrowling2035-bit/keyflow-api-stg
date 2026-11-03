@@ -18,6 +18,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Dedicated Greetings / Bulk Mailer
+    |--------------------------------------------------------------------------
+    |
+    | Used specifically for automated greeting & bulk emails (e.g. AWS SES) so
+    | that default SMTP remains isolated for standard CRM transactional emails.
+    |
+    */
+
+    'greetings_mailer' => env('GREETINGS_MAIL_MAILER', 'ses'),
+
+    'greetings_from' => [
+        'address' => env('GREETINGS_MAIL_FROM_ADDRESS'),
+        'name' => env('GREETINGS_MAIL_FROM_NAME'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Mailer Configurations
     |--------------------------------------------------------------------------
     |

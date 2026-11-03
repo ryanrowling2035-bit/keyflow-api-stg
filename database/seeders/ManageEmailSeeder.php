@@ -1330,6 +1330,41 @@ class ManageEmailSeeder extends Seeder
                 ',
                 'macro' => '{{manager_name}}, {{period_type}}, {{period_label}}, {{period_range}}, {{agent_count}}, {{performance_table}}, {{company_name}}',
             ],
+            [
+                'title' => 'Employee Birthday Greeting',
+                'slug' => Constants::EMAIL_SLUGS['hr']['employee_birthday'],
+                'subject' => 'Happy Birthday {{employee_name}}! 🎉',
+                'emailContent' => '
+                    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333333; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px; background: #ffffff;">
+                        <h2 style="color: #2563eb; margin-top: 0;">🎂 Happy Birthday, {{employee_name}}! 🎈</h2>
+                        <p>Dear {{employee_name}},</p>
+                        <p>On behalf of the entire team at <strong>{{company_name}}</strong>, we want to wish you a very Happy Birthday!</p>
+                        <p>We appreciate your dedication, hard work, and the positive energy you bring to our team every day.</p>
+                        <p>May this year bring you great happiness, good health, and continued success in all your endeavors.</p>
+                        <br>
+                        <p>Enjoy your special day!</p>
+                        <p>Warmest regards,<br><strong>{{company_name}} Team</strong></p>
+                    </div>
+                ',
+                'macro' => '{{employee_name}}, {{employee_first_name}}, {{employee_role}}, {{employee_department}}, {{company_name}}, {{company_email}}, {{year}}',
+            ],
+            [
+                'title' => 'Employee Holiday Greeting',
+                'slug' => Constants::EMAIL_SLUGS['hr']['employee_holiday'],
+                'subject' => 'Warm Holiday Wishes from {{company_name}}! 🎄✨',
+                'emailContent' => '
+                    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333333; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px; background: #ffffff;">
+                        <h2 style="color: #059669; margin-top: 0;">🌟 Season’s Greetings & Happy Holidays! 🌟</h2>
+                        <p>Dear {{employee_name}},</p>
+                        <p>As we celebrate this festive season, we want to extend our heartfelt gratitude for your dedication and contributions to <strong>{{company_name}}</strong>.</p>
+                        <p>May this holiday season bring you, your family, and loved ones peace, joy, and wonderful moments together.</p>
+                        <p>Wishing you a joyful holiday and a happy, prosperous year ahead!</p>
+                        <br>
+                        <p>Warmest wishes,<br><strong>Management & Team at {{company_name}}</strong></p>
+                    </div>
+                ',
+                'macro' => '{{employee_name}}, {{employee_first_name}}, {{holiday_name}}, {{company_name}}, {{year}}',
+            ],
         ];
         foreach ($emails as $email) {
             ManageEmail::updateOrCreate(

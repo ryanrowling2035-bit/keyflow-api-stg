@@ -39,7 +39,17 @@ use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\TeamController;
 use App\Http\Controllers\Api\ThirdPartyController;
 use App\Http\Controllers\Api\UserActivityController;
+use App\Http\Controllers\Api\GreetingTemplateController;
+
+use App\Http\Controllers\Api\HrEmployeeController;
+use App\Http\Controllers\Api\HrAttendanceController;
+use App\Http\Controllers\Api\HrDashboardController;
+use App\Http\Controllers\Api\LeaveSettingController;
+use App\Http\Controllers\Api\DepartmentController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
+use App\Http\Controllers\Api\AttendanceController;
+use App\Http\Controllers\Api\LeaveController;
+use App\Http\Controllers\Api\ExpiryNotificationController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('login', [AuthController::class, 'login']);
@@ -104,6 +114,14 @@ Route::middleware('jwt.auth')->group(function () {
 
     // Users Routes
     Route::get('users', [AuthController::class, 'users']);
+    Route::get('hr/employees', [AuthController::class, 'getHrEmployees']);
+    // Leave Settings Routes
+    Route::get('hr/leave-settings', [LeaveSettingController::class, 'index']);
+    Route::post('hr/leave-settings', [LeaveSettingController::class, 'store']);
+    Route::put('hr/leave-settings/{id}', [LeaveSettingController::class, 'update']);
+    Route::delete('hr/leave-settings/bulk-delete', [LeaveSettingController::class, 'bulkDelete']);
+    Route::delete('hr/leave-settings/{id}', [LeaveSettingController::class, 'destroy']);
+
     Route::post('addUser', [AuthController::class, 'addUser']);
     Route::post('updateUser/{id}', [AuthController::class, 'updateUser']);
     Route::get('getUserById/{id}', [AuthController::class, 'getUserById']);
@@ -116,6 +134,75 @@ Route::middleware('jwt.auth')->group(function () {
     Route::post('users/{id}/tokens', [AuthController::class, 'issueUserToken']);
     Route::get('users/{id}/tokens', [AuthController::class, 'listUserTokens']);
     Route::delete('users/{id}/tokens/{tokenId}', [AuthController::class, 'revokeUserToken']);
+
+    // HR & Operations Routes
+    Route::prefix('hr')->group(function () {
+        // HR Leave Management Routes (Standard Keyflow CRM specification)
+        Route::get('leave-types', [LeaveController::class, 'getLeaveTypes']);
+        Route::post('leaves', [LeaveController::class, 'applyLeave']);
+        Route::get('leaves', [LeaveController::class, 'getAll']);
+        Route::get('leaves/my', [LeaveController::class, 'getMyLeaves']);
+        Route::get('leaves/balance/{userId?}', [LeaveController::class, 'getLeaveBalance']);
+        Route::get('leaves/{id}', [LeaveController::class, 'getLeaveById']);
+        Route::match(['put', 'post'], 'leaves/{id}/approve', [LeaveController::class, 'approveLeave']);
+        Route::match(['put', 'post'], 'leaves/{id}/reject', [LeaveController::class, 'rejectLeave']);
+        Route::match(['put', 'post'], 'leaves/{id}/cancel', [LeaveController::class, 'cancelLeave']);
+
+        // Expiry Notifications (Cron & Manual Triggers)
+        Route::match(['get', 'post'], 'expiry-notifications/cron', [ExpiryNotificationController::class, 'runExpiryCron']);
+        Route::match(['get', 'post'], 'expiry-notifications/trigger', [ExpiryNotificationController::class, 'runExpiryCron']);
+
+        // Attendance Routes under /hr
+        Route::get('attendance/today-status', [AttendanceController::class, 'getTodayStatus']);
+        Route::post('attendance/check-in', [AttendanceController::class, 'checkIn']);
+        Route::post('attendance/check-out', [AttendanceController::class, 'checkOut']);
+        Route::get('attendance/daily', [AttendanceController::class, 'getDailyAttendance']);
+        Route::post('attendance/manual-mark', [AttendanceController::class, 'markManualAttendance']);
+        Route::get('attendance/monthly-report', [AttendanceController::class, 'getMonthlyReport']);
+
+        // HR Dashboard & Birthday Calendar
+        Route::get('dashboard', [HrDashboardController::class, 'index']);
+        Route::get('dashboard/birthday-calendar', [HrDashboardController::class, 'birthdayCalendar']);
+
+        // Employee Directory & Profile
+        Route::get('employees', [AuthController::class, 'getHrEmployees']);
+        Route::post('employees', [HrEmployeeController::class, 'store']);
+        Route::get('employees/{id}', [HrEmployeeController::class, 'show']);
+        Route::put('employees/{id}', [HrEmployeeController::class, 'update']);
+        Route::delete('employees/{id}', [HrEmployeeController::class, 'destroy']);
+        Route::put('employees/{id}/status', [HrEmployeeController::class, 'updateStatus']);
+        Route::post('employees/{id}/documents', [HrEmployeeController::class, 'uploadDocument']);
+        Route::delete('documents/{docId}', [HrEmployeeController::class, 'deleteDocument']);
+
+        // Reports
+        Route::get('reports/leave-balances', [HrEmployeeController::class, 'leaveBalanceReport']);
+        Route::get('reports/document-expiry', [HrEmployeeController::class, 'documentExpiryReport']);
+
+        // Leave Management (Fallback compatibility aliases)
+        Route::get('leaves/types', [LeaveController::class, 'getLeaveTypes']);
+        Route::get('leaves/my-leaves', [LeaveController::class, 'getMyLeaves']);
+
+        // Leave Settings
+        Route::get('leave-settings', [LeaveSettingController::class, 'index']);
+        Route::post('leave-settings', [LeaveSettingController::class, 'store']);
+        Route::put('leave-settings/{id}', [LeaveSettingController::class, 'update']);
+        Route::delete('leave-settings/bulk-delete', [LeaveSettingController::class, 'bulkDelete']);
+        Route::delete('leave-settings/{id}', [LeaveSettingController::class, 'destroy']);
+
+        // Attendance Tracking (Legacy / Alternative)
+        Route::post('attendance/mark', [HrAttendanceController::class, 'markSingle']);
+        Route::post('attendance/mark-bulk', [HrAttendanceController::class, 'markBulk']);
+        Route::get('attendance/daily-summary', [HrAttendanceController::class, 'dailySummary']);
+        Route::get('attendance/report', [HrAttendanceController::class, 'report']);
+    });
+
+    // Departments Routes
+    Route::get('departments', [DepartmentController::class, 'index']);
+    Route::get('departments/{id}', [DepartmentController::class, 'show']);
+    Route::post('departments', [DepartmentController::class, 'store']);
+    Route::put('departments/{id}', [DepartmentController::class, 'update']);
+    Route::delete('departments/{id}', [DepartmentController::class, 'destroy']);
+    Route::patch('departments/{id}/status', [DepartmentController::class, 'toggleStatus']);
 
     // getGlobalConstant Routes
     Route::get('getGlobalConstant', [GlobalConstantController::class, 'getGlobalConstant']);
@@ -313,6 +400,19 @@ Route::middleware('jwt.auth')->group(function () {
     Route::get('/settings/general', [GlobalSettingController::class, 'getSettings']);
     Route::get('/settings/email-automations', [GlobalSettingController::class, 'getEmailAutomations']);
     Route::put('/settings/email-automations', [GlobalSettingController::class, 'updateEmailAutomations']);
+
+    // Greeting Templates
+    Route::prefix('settings/greeting-templates')->group(function () {
+        Route::get('/', [GreetingTemplateController::class, 'index']);
+        Route::post('/', [GreetingTemplateController::class, 'store']);
+        Route::get('/logs', [GreetingTemplateController::class, 'logs']);
+        Route::post('/cron', [GreetingTemplateController::class, 'triggerCron']);
+        Route::post('/upload-image', [GreetingTemplateController::class, 'uploadImage']);
+        Route::post('/{id}/test', [GreetingTemplateController::class, 'test']);
+        Route::get('/{id}', [GreetingTemplateController::class, 'show']);
+        Route::put('/{id}', [GreetingTemplateController::class, 'update']);
+        Route::delete('/{id}', [GreetingTemplateController::class, 'destroy']);
+    });
     // Enquiry
     Route::get('enquiry/listing', [EnquiryController::class, 'getAllEnquiryListing']);
     Route::get('enquiry/kanban', [EnquiryController::class, 'kanban']);
@@ -466,3 +566,46 @@ Route::get('generic-xml', [PropertiesController::class, 'exclusiveLinksListingsX
 
 // Inbound WhatsApp webhook (360degreeapps) — customer replies / free-text messages
 Route::post('webhook/whatsapp/inbound', [WhatsAppWebhookController::class, 'handle']);
+
+// Public greeting image route
+Route::get('/greetings/image/{filename}', [GreetingTemplateController::class, 'showImage']);
+
+Route::get('/documents/{path}', [\App\Http\Controllers\Api\AuthController::class, 'showDocument'])->where('path', '.*');
+
+// HR Attendance Routes (Public / App level)
+Route::prefix('hr/attendance')->group(function () {
+    Route::get('/today-status', [AttendanceController::class, 'getTodayStatus']);
+    Route::post('/check-in', [AttendanceController::class, 'checkIn']);
+    Route::post('/check-out', [AttendanceController::class, 'checkOut']);
+    Route::get('/daily', [AttendanceController::class, 'getDailyAttendance']);
+    Route::post('/manual-mark', [AttendanceController::class, 'markManualAttendance']);
+    Route::get('/monthly-report', [AttendanceController::class, 'getMonthlyReport']);
+});
+
+// Leave attachments & storage route
+Route::get('/leaves/attachment/{filename}', function ($filename) {
+    $cleanPath = str_replace(['..', '\\'], '', $filename);
+    $filePath = storage_path('app/public/leaves/' . $cleanPath);
+    if (file_exists($filePath)) {
+        return response()->file($filePath);
+    }
+    $alt = storage_path('app/leaves/' . $cleanPath);
+    if (file_exists($alt)) {
+        return response()->file($alt);
+    }
+    abort(404);
+});
+
+Route::get('/storage/{path}', function ($path) {
+    $cleanPath = str_replace(['..', '\\'], '', $path);
+    $cleanPath = ltrim($cleanPath, '/');
+    $filePath = storage_path('app/public/' . $cleanPath);
+    if (file_exists($filePath)) {
+        return response()->file($filePath);
+    }
+    $alt = storage_path('app/' . $cleanPath);
+    if (file_exists($alt)) {
+        return response()->file($alt);
+    }
+    abort(404);
+})->where('path', '.*');

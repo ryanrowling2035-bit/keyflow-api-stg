@@ -31,6 +31,8 @@ class DatabaseSeeder extends Seeder
             PortalSettingSeeder::class,
             LocationReferenceSeeder::class,
             TeamSeeder::class,
+            DepartmentSeeder::class,
+            EmployeeHolidayBirthdaySeeder::class,
         ]);
     }
 }

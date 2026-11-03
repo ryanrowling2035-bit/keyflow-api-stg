@@ -31,32 +31,36 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(120)->by('keyflow-public-api|'.$key);
         });
 
-        if (Schema::hasTable('global_settings')) {
+        try {
+            if (Schema::hasTable('global_settings')) {
 
-            $settings = GlobalSetting::pluck('settingValue', 'settingKey')->toArray();
+                $settings = GlobalSetting::pluck('settingValue', 'settingKey')->toArray();
 
-            if (! empty($settings['_smtpHost'])) {
+                if (! empty($settings['_smtpHost'])) {
 
-                Config::set('mail.default', 'smtp');
+                    Config::set('mail.default', 'smtp');
 
-                Config::set('mail.mailers.smtp', [
-                    'transport' => 'smtp',
-                    'host' => $settings['_smtpHost'],
-                    'port' => (int) $settings['_smtpPort'],
-                    'encryption' => $settings['_smtpEncryption'] ?? null,
-                    'username' => $settings['_smtpUsername'] ?? null,
-                    'password' => $settings['_smtpPassword'] ?? null,
-                    'timeout' => null,
-                    'auth_mode' => null,
-                ]);
-                Config::set('mail.from.address', $settings['_sendFromEmail'] ?? config('mail.from.address'));
-                Config::set('mail.from.name', $settings['_sendFromName'] ?? $settings['_websiteTitle'] ?? config('app.name'));
+                    Config::set('mail.mailers.smtp', [
+                        'transport' => 'smtp',
+                        'host' => $settings['_smtpHost'],
+                        'port' => (int) $settings['_smtpPort'],
+                        'encryption' => $settings['_smtpEncryption'] ?? null,
+                        'username' => $settings['_smtpUsername'] ?? null,
+                        'password' => $settings['_smtpPassword'] ?? null,
+                        'timeout' => null,
+                        'auth_mode' => null,
+                    ]);
+                    Config::set('mail.from.address', $settings['_sendFromEmail'] ?? config('mail.from.address'));
+                    Config::set('mail.from.name', $settings['_sendFromName'] ?? $settings['_websiteTitle'] ?? config('app.name'));
 
-                if ($this->app->resolved('mail.manager')) {
-                    $this->app->forgetInstance('mail.manager');
-                    $this->app->forgetInstance('mailer');
+                    if ($this->app->resolved('mail.manager')) {
+                        $this->app->forgetInstance('mail.manager');
+                        $this->app->forgetInstance('mailer');
+                    }
                 }
             }
+        } catch (\Throwable $e) {
+            // Silently ignore if database is unreachable (e.g. CLI commands, early boot, or tests)
         }
     }
 }

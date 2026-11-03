@@ -59,9 +59,30 @@ class Constants
         'licenseNumber' => '_licenseNumber',
         'licenseExpiryDate' => '_licenseExpiryDate',
         'passportNumber' => '_passportNumber',
+        'passportExpiryDate' => '_passportExpiryDate',
+        'emiratesIdExpiryDate' => '_emiratesIdExpiryDate',
+        'insuranceExpiryDate' => '_insuranceExpiryDate',
         'visaExpiryDate' => '_visaExpiryDate',
         'description' => '_description',
         'idCard' => '_idCard',
+        'passportFile' => '_passportFile',
+        'emiratesIdFile' => '_emiratesIdFile',
+        'visaFile' => '_visaFile',
+        'labourContractFile' => '_labourContractFile',
+        'ndaFile' => '_ndaFile',
+        'employmentContractFile' => '_employmentContractFile',
+        'certificatesFile' => '_certificatesFile',
+        'insuranceFile' => '_insuranceFile',
+        'labourContractExpiryDate' => '_labourContractExpiryDate',
+        'employmentContractExpiryDate' => '_employmentContractExpiryDate',
+        'ndaExpiryDate' => '_ndaExpiryDate',
+        'certificatesExpiryDate' => '_certificatesExpiryDate',
+        'labourCardExpiryDate' => '_labourCardExpiryDate',
+        'personalEmail' => '_personalEmail',
+        'employmentType' => '_employmentType',
+        'managerId' => '_managerId',
+        'annualLeaveAllowed' => '_annualLeaveAllowed',
+        'leaveBalance' => '_leaveBalance',
         'brokerId' => '_brokerId',
         'pfPublicProfileId' => '_pfPublicProfileId',
         'defaultAdmin' => '_defaultAdmin',
@@ -1890,6 +1911,7 @@ class Constants
         'data_export' => 'data_export',
         'enquiry_lost_colleague' => 'enquiry_lost_colleague',
         'duplicate_enquiry' => 'duplicate_enquiry',
+        'document_expiry' => 'document_expiry',
     ];
 
     const NOTIFICATION_MODULES = [
@@ -1898,6 +1920,7 @@ class Constants
         'user' => 'User',
         'task' => 'Task',
         'calendarEvent' => 'CalendarEvent',
+        'employee_document' => 'Employee Document',
     ];
 
     // Most producers re-run on every save/upload, so identical alerts used to stack up
@@ -1999,6 +2022,10 @@ class Constants
         'performance' => [
             'target_summary' => 'agent_target_performance',
             'manager_summary' => 'manager_target_performance',
+        ],
+        'hr' => [
+            'employee_birthday' => 'hr_employee_birthday_greeting',
+            'employee_holiday' => 'hr_employee_holiday_greeting',
         ],
     ];
 

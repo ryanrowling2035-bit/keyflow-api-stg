@@ -138,6 +138,8 @@ class AuthController extends Controller
                     'roleName' => $roleName,
                     'name' => $user->name,
                     'email' => $user->email,
+                    'date_of_birth' => $user->date_of_birth,
+                    'dob' => $user->date_of_birth,
                     'agentType' => $user->agentType,
                     'profilePhoto' => $user->thumbnailPath ? url($user->thumbnailPath) : ($user->profilePhoto ? url($user->profilePhoto) : null),
                 ],
@@ -160,6 +162,182 @@ class AuthController extends Controller
             );
         } catch (\Exception $e) {
             return $this->exceptionResponse('AuthController : users', $e);
+        }
+    }
+
+    public function getHrEmployees(Request $request)
+    {
+        try {
+            if (auth()->id()) {
+                logUserActivity([
+                    'userId' => auth()->id(),
+                    'action' => 'View',
+                    'module' => 'HR Dashboard',
+                    'description' => 'Viewed HR Dashboard / Employee Directory'
+                ]);
+            }
+            $query = \App\Models\User::leftJoin('departments', 'users.department', '=', 'departments.id')
+                ->select('users.*', 'departments.name as department_name')
+                ->with(['teams.members.user.role', 'role', 'meta']);
+
+            if ($request->filled('status') && $request->status !== 'all') {
+                $statusList = is_array($request->status) ? $request->status : explode(',', $request->status);
+                $query->where(function ($q) use ($statusList) {
+                    foreach ($statusList as $st) {
+                        $s = strtolower(trim($st));
+                        if (in_array($s, ['active', '1', 'true'])) {
+                            $q->orWhereIn('users.status', ['active', 'Active', '1']);
+                        } elseif (in_array($s, ['inactive', '0', 'false'])) {
+                            $q->orWhereIn('users.status', ['inActive', 'InActive', 'inactive', 'Inactive', '0']);
+                        } else {
+                            $q->orWhere('users.status', $st);
+                        }
+                    }
+                });
+            }
+
+            if ($request->filled('search')) {
+                $search = strtolower(trim($request->search));
+                $query->where(function ($q) use ($search) {
+                    $q->whereRaw('LOWER(users.name) LIKE ?', ["%{$search}%"])
+                      ->orWhereRaw('LOWER(users.email) LIKE ?', ["%{$search}%"])
+                      ->orWhereRaw('LOWER(users.phone) LIKE ?', ["%{$search}%"]);
+                });
+            }
+
+            // Department filter
+            if ($request->filled('department') && $request->department !== 'all') {
+                $deptList = is_array($request->department) ? $request->department : explode(',', $request->department);
+                $query->where(function ($q) use ($deptList) {
+                    $q->whereIn('users.department', $deptList)
+                      ->orWhereIn('departments.name', $deptList);
+                });
+            }
+
+            // Team filter
+            $teamParam = $request->team ?? $request->team_id ?? $request->teamId;
+            if (!empty($teamParam) && $teamParam !== 'all') {
+                $teamList = is_array($teamParam) ? $teamParam : explode(',', $teamParam);
+                $query->whereHas('teams', function ($q) use ($teamList) {
+                    $q->whereIn('teams.id', $teamList)->orWhereIn('teams.name', $teamList);
+                });
+            }
+
+            // Manager filter (match if user's team has this manager, or user's _managerId matches)
+            $mgrParam = $request->manager ?? $request->manager_id ?? $request->managerId;
+            if (!empty($mgrParam) && $mgrParam !== 'all') {
+                $mgrList = is_array($mgrParam) ? $mgrParam : explode(',', $mgrParam);
+                $query->where(function ($q) use ($mgrList) {
+                    $q->whereHas('teams.members.user', function ($uq) use ($mgrList) {
+                        $uq->whereIn('users.id', $mgrList)
+                           ->orWhereIn('users.name', $mgrList);
+                    })->orWhereHas('meta', function ($mq) use ($mgrList) {
+                        $mq->where('metaKey', '_managerId')->whereIn('metaValue', $mgrList);
+                    });
+                });
+            }
+
+            // Joining Date filter
+            if ($request->filled('joining_date')) {
+                $query->whereDate('users.joining_date', $request->joining_date);
+            }
+
+            $users = $query->get();
+
+            $formattedUsers = $users->map(function ($user) {
+                $managerUser = null;
+                $managerName = null;
+                $teamNames = [];
+
+                if ($user->teams && $user->teams->isNotEmpty()) {
+                    $teamNames = $user->teams->pluck('name')->filter()->values()->toArray();
+
+                    // Loop through teams assigned to this employee
+                    // The user assigned to the same team whose role is Manager is this employee's manager
+                    foreach ($user->teams as $team) {
+                        if ($team->members) {
+                            $mMember = $team->members->first(function ($member) use ($user) {
+                                if (! $member->user || (int) $member->user->id === (int) $user->id) {
+                                    return false;
+                                }
+                                $rName = $member->user->role?->name ?? '';
+                                return strcasecmp($rName, 'Manager') === 0 || $member->user->roleId == 2;
+                            });
+
+                            if ($mMember && $mMember->user) {
+                                $managerUser = $mMember->user;
+                                $managerName = $managerUser->name;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                $metaMap = [];
+                if ($user->meta) {
+                    foreach ($user->meta as $m) {
+                        $metaMap[$m->metaKey] = $m->metaValue;
+                    }
+                }
+
+                // Fallback to meta _managerId if not resolved from teams
+                if (! $managerUser && ! empty($metaMap['_managerId'])) {
+                    $metaMgrId = (int) $metaMap['_managerId'];
+                    if ($metaMgrId !== (int) $user->id) {
+                        $metaMgr = \App\Models\User::find($metaMgrId);
+                        if ($metaMgr) {
+                            $managerUser = $metaMgr;
+                            $managerName = $metaMgr->name;
+                        }
+                    }
+                }
+
+                $dept = $user->department_name ?: $user->department;
+                if (empty($dept)) {
+                    $rName = strtolower($user->role?->name ?? '');
+                    if (str_contains($rName, 'agent') || str_contains($rName, 'manager')) {
+                        $dept = 'Sales';
+                    } elseif (str_contains($rName, 'hr')) {
+                        $dept = 'Human Resources';
+                    } elseif (str_contains($rName, 'admin')) {
+                        $dept = 'Management';
+                    }
+                }
+
+                return [
+                    'id' => $user->id,
+                    'employee_id' => $user->employee_id ?? $user->agentCode ?? ('EMP-' . str_pad($user->id, 4, '0', STR_PAD_LEFT)),
+                    'name' => $user->name,
+                    'department' => $dept,
+                    'department_name' => $dept,
+                    'team' => !empty($teamNames) ? implode(', ', $teamNames) : null,
+                    'teams' => $user->teams->map(fn ($t) => ['id' => $t->id, 'name' => $t->name]),
+                    'designation' => $user->designation,
+                    'status' => $user->status,
+                    'joining_date' => $user->joining_date,
+                    'date_of_birth' => $user->date_of_birth,
+                    'dob' => $user->date_of_birth,
+                    'email' => $user->email,
+                    'manager' => $managerUser ? [
+                        'id' => $managerUser->id,
+                        'name' => $managerUser->name,
+                        'email' => $managerUser->email,
+                    ] : null,
+                    'manager_name' => $managerName,
+                    'manager_id' => $managerUser?->id,
+                    'managerName' => $managerName,
+                    'phone' => $user->phone,
+                    'profilePhoto' => $user->profilePhoto,
+                    'userMetaDetails' => $metaMap,
+                ];
+            });
+
+            return $this->success(
+                $formattedUsers,
+                'HR Employees retrieved successfully.'
+            );
+        } catch (\Exception $e) {
+            return $this->exceptionResponse('AuthController : getHrEmployees', $e);
         }
     }
 
@@ -199,12 +377,29 @@ class AuthController extends Controller
             'licenseNumber' => 'nullable|string',
             'licenseExpiryDate' => 'nullable|string',
             'passportNumber' => 'nullable|string',
+            'passportExpiryDate' => 'nullable|string',
+            'emiratesIdExpiryDate' => 'nullable|string',
+            'insuranceExpiryDate' => 'nullable|string',
             'visaExpiryDate' => 'nullable|string',
+            'labourContractExpiryDate' => 'nullable|string',
+            'employmentContractExpiryDate' => 'nullable|string',
+            'ndaExpiryDate' => 'nullable|string',
+            'certificatesExpiryDate' => 'nullable|string',
             'description' => 'nullable|string',
             'residencyStatus' => 'nullable|string|max:50',
             'website' => 'nullable|url',
             'isAvailable' => 'nullable|boolean',
             'roleId' => 'nullable',
+            'designation' => 'nullable|string',
+            'department' => 'nullable|string',
+            'emergency_contact_number' => 'nullable|string',
+            'emergencyContact' => 'nullable|string',
+            'date_of_birth' => 'nullable|date',
+            'dateOfBirth' => 'nullable|date',
+            'dob' => 'nullable|date',
+            'joining_date' => 'nullable|date',
+            'joiningDate' => 'nullable|date',
+            'joinDate' => 'nullable|date',
         ]);
 
         if ($validator->fails()) {
@@ -214,6 +409,26 @@ class AuthController extends Controller
         try {
             $plainPassword = $request->password;
             $validatedData = $validator->validated();
+
+            if ($request->filled('emergencyContact') && empty($validatedData['emergency_contact_number'])) {
+                $validatedData['emergency_contact_number'] = $request->emergencyContact;
+            } elseif ($request->filled('emergency_contact') && empty($validatedData['emergency_contact_number'])) {
+                $validatedData['emergency_contact_number'] = $request->emergency_contact;
+            }
+
+            if ($request->filled('dateOfBirth') && empty($validatedData['date_of_birth'])) {
+                $validatedData['date_of_birth'] = $request->dateOfBirth;
+            } elseif ($request->filled('dob') && empty($validatedData['date_of_birth'])) {
+                $validatedData['date_of_birth'] = $request->dob;
+            }
+
+            if ($request->filled('joiningDate') && empty($validatedData['joining_date'])) {
+                $validatedData['joining_date'] = $request->joiningDate;
+            } elseif ($request->filled('joinDate') && empty($validatedData['joining_date'])) {
+                $validatedData['joining_date'] = $request->joinDate;
+            } elseif ($request->filled('join_date') && empty($validatedData['joining_date'])) {
+                $validatedData['joining_date'] = $request->join_date;
+            }
             if (getRoleNameById($request->roleId) === 'Agent') {
                 $validatedData['password'] = $plainPassword;
                 $validatedData['status'] = $request->status;
@@ -356,11 +571,28 @@ class AuthController extends Controller
             'licenseNumber' => 'nullable|string',
             'licenseExpiryDate' => 'nullable|string',
             'passportNumber' => 'nullable|string',
+            'passportExpiryDate' => 'nullable|string',
+            'emiratesIdExpiryDate' => 'nullable|string',
+            'insuranceExpiryDate' => 'nullable|string',
             'visaExpiryDate' => 'nullable|string',
+            'labourContractExpiryDate' => 'nullable|string',
+            'employmentContractExpiryDate' => 'nullable|string',
+            'ndaExpiryDate' => 'nullable|string',
+            'certificatesExpiryDate' => 'nullable|string',
             'description' => 'nullable|string',
             'residencyStatus' => 'nullable|string|max:50',
             'website' => 'nullable|url',
             'isAvailable' => 'nullable|boolean',
+            'designation' => 'nullable|string',
+            'department' => 'nullable|string',
+            'emergency_contact_number' => 'nullable|string',
+            'emergencyContact' => 'nullable|string',
+            'date_of_birth' => 'nullable|date',
+            'dateOfBirth' => 'nullable|date',
+            'dob' => 'nullable|date',
+            'joining_date' => 'nullable|date',
+            'joiningDate' => 'nullable|date',
+            'joinDate' => 'nullable|date',
         ]);
 
         if ($validator->fails()) {
@@ -369,6 +601,27 @@ class AuthController extends Controller
 
         try {
             $validatedData = $validator->validated();
+
+            if ($request->has('emergencyContact')) {
+                $validatedData['emergency_contact_number'] = $request->emergencyContact;
+            } elseif ($request->has('emergency_contact')) {
+                $validatedData['emergency_contact_number'] = $request->emergency_contact;
+            }
+
+            if ($request->has('dateOfBirth')) {
+                $validatedData['date_of_birth'] = $request->dateOfBirth;
+            } elseif ($request->has('dob')) {
+                $validatedData['date_of_birth'] = $request->dob;
+            }
+
+            if ($request->has('joiningDate')) {
+                $validatedData['joining_date'] = $request->joiningDate;
+            } elseif ($request->has('joinDate')) {
+                $validatedData['joining_date'] = $request->joinDate;
+            } elseif ($request->has('join_date')) {
+                $validatedData['joining_date'] = $request->join_date;
+            }
+
             unset($validatedData['userName']);
             unset($validatedData['agentCode']);
 
@@ -490,6 +743,15 @@ class AuthController extends Controller
 
     public function updateUserStatus(Request $request, $id)
     {
+        if ($request->has('status')) {
+            $s = strtolower(trim((string) $request->status));
+            if (in_array($s, ['inactive', '0', 'false'])) {
+                $request->merge(['status' => Constants::USER_STATUS_INACTIVE]);
+            } elseif (in_array($s, ['active', '1', 'true'])) {
+                $request->merge(['status' => Constants::USER_STATUS_ACTIVE]);
+            }
+        }
+
         $validator = Validator::make($request->all(), [
             'status' => 'required|in:'.implode(',', array_keys(Constants::USER_STATUS)),
         ]);
@@ -941,6 +1203,7 @@ class AuthController extends Controller
             }
 
             $users = $query->where('status', 'active')
+                ->with('teams:teams.id,teams.name')
                 ->orderBy('name')
                 ->get()
                 ->map(function ($user) {
@@ -949,6 +1212,9 @@ class AuthController extends Controller
                         'name' => $user->name,
                         'identifier' => $user->name.' - '.$user->email,
                         'agentCode' => $user->agentCode,
+                        'teams' => $user->teams->map(fn ($t) => ['id' => $t->id, 'name' => $t->name]),
+                        'teamId' => $user->teams->first()?->id,
+                        'teamName' => $user->teams->first()?->name,
                     ];
                 });
 
@@ -967,7 +1233,8 @@ class AuthController extends Controller
         }
 
         try {
-            $query = User::select('id', 'name', 'agentCode')
+            $query = User::select('id', 'name', 'agentCode', 'email')
+                ->with('teams:teams.id,teams.name')
                 ->whereHas('role', function ($q) use ($types) {
                     $q->whereIn('name', $types);
                 })->where('status', 'active');
@@ -1147,5 +1414,26 @@ class AuthController extends Controller
         } catch (\Exception $e) {
             return $this->exceptionResponse('AuthController : revokeUserToken', $e);
         }
+    }
+
+    public function showDocument(string $path)
+    {
+        $cleanPath = str_replace(['..', '\\'], '', $path);
+        $cleanPath = ltrim($cleanPath, '/');
+        if (str_starts_with($cleanPath, 'documents/')) {
+            $cleanPath = substr($cleanPath, strlen('documents/'));
+        }
+
+        $filePath = storage_path('app/documents/' . $cleanPath);
+
+        if (! file_exists($filePath)) {
+            $publicFilePath = storage_path('app/public/documents/' . $cleanPath);
+            if (file_exists($publicFilePath)) {
+                return response()->file($publicFilePath);
+            }
+            abort(404);
+        }
+
+        return response()->file($filePath);
     }
 }

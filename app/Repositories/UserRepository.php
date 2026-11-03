@@ -14,7 +14,7 @@ class UserRepository
             ? $request->per_page
             : 10;
 
-        $query = User::with(['creator', 'role', 'meta', 'teams']);
+        $query = User::with(['creator', 'role', 'meta', 'teams', 'employeeDocuments']);
 
         if (isAgent()) {
             $query->where('createdBy', user()->id);
@@ -82,7 +82,7 @@ class UserRepository
 
     public function findById($id)
     {
-        return User::with(['creator', 'role'])->find($id);
+        return User::with(['creator', 'role', 'meta', 'teams', 'employeeDocuments'])->find($id);
     }
 
     public function create(array $data)

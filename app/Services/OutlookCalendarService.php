@@ -65,12 +65,23 @@ class OutlookCalendarService
         }
     }
 
+    protected function httpWithToken(string $token)
+    {
+        return (app()->isLocal() ? Http::withoutVerifying() : Http::getFacadeRoot())
+            ->withToken($token);
+    }
+
     /**
      * Build the Microsoft OAuth provider.
      */
     protected function getMicrosoftProvider(): GenericProvider
     {
         $tenantId = env('AZURE_TENANT_ID', 'common');
+
+        $httpClient = new \GuzzleHttp\Client([
+            'verify' => !app()->isLocal(),
+            'timeout' => 30,
+        ]);
 
         return new GenericProvider([
             'clientId' => env('AZURE_CLIENT_ID'),
@@ -81,6 +92,8 @@ class OutlookCalendarService
             'urlResourceOwnerDetails' => 'https://graph.microsoft.com/v1.0/me',
             'scopes' => 'offline_access Mail.Read User.Read Calendars.ReadWrite',
             'scopeSeparator' => ' ',
+        ], [
+            'httpClient' => $httpClient,
         ]);
     }
 
@@ -101,7 +114,7 @@ class OutlookCalendarService
 
         $body = $this->buildOutlookEventBody($event);
 
-        $response = Http::withToken($token)
+        $response = $this->httpWithToken($token)
             ->post("{$this->graphUrl}/me/events", $body);
 
         if ($response->successful()) {
@@ -142,7 +155,7 @@ class OutlookCalendarService
 
         $body = $this->buildOutlookEventBody($event);
 
-        $response = Http::withToken($token)
+        $response = $this->httpWithToken($token)
             ->patch("{$this->graphUrl}/me/events/{$event->outlookEventId}", $body);
 
         if ($response->successful()) {
@@ -177,7 +190,7 @@ class OutlookCalendarService
             return false;
         }
 
-        $response = Http::withToken($token)
+        $response = $this->httpWithToken($token)
             ->delete("{$this->graphUrl}/me/events/{$outlookEventId}");
 
         return $response->successful() || $response->status() === 404;
@@ -192,12 +205,22 @@ class OutlookCalendarService
         $endDateTime = $event->endDateTime ?? $event->startDateTime->copy()->addHour();
 
         // Microsoft Graph requires all-day events to have start/end at midnight
-        // End must be midnight of the NEXT day (e.g. Feb 14 all-day → end = Feb 15 00:00:00)
         if ($event->allDay) {
             $startDateTime = $startDateTime->copy()->startOfDay();
-            $endDateTime = $endDateTime->copy()->startOfDay()->addDay();
+            
+            // If the end date is on or before the start date (e.g. single day event), make it exactly 1 day long
+            if ($endDateTime->copy()->startOfDay()->lte($startDateTime)) {
+                $endDateTime = $startDateTime->copy()->addDay();
+            } else {
+                // If it's already exactly midnight (e.g. from Outlook sync), keep it. 
+                // If it has time (like 23:59:59 from CRM), round up to next midnight.
+                if ($endDateTime->format('H:i:s') !== '00:00:00') {
+                    $endDateTime = $endDateTime->copy()->startOfDay()->addDay();
+                }
+            }
         }
 
+        // Convert the internal UTC datetimes so Outlook renders properly in UTC (Outlook automatically translates to user's timezone)
         $body = [
             'subject' => $event->title,
             'body' => [
@@ -206,11 +229,11 @@ class OutlookCalendarService
             ],
             'start' => [
                 'dateTime' => $startDateTime->format('Y-m-d\TH:i:s'),
-                'timeZone' => GlobalSetting::where('settingKey', '_timeZone')->value('settingValue') ?: config('app.timezone', 'UTC'),
+                'timeZone' => 'UTC',
             ],
             'end' => [
                 'dateTime' => $endDateTime->format('Y-m-d\TH:i:s'),
-                'timeZone' => GlobalSetting::where('settingKey', '_timeZone')->value('settingValue') ?: config('app.timezone', 'UTC'),
+                'timeZone' => 'UTC',
             ],
             'isAllDay' => (bool) $event->allDay,
         ];
@@ -228,7 +251,7 @@ class OutlookCalendarService
     }
 
     // =========================================================================
-    //  PULL: Outlook → CRM
+    //  PULL: Outlook → CRM (Last Updated Wins)
     // =========================================================================
 
     /**
@@ -245,11 +268,11 @@ class OutlookCalendarService
         $start = $startDate ? Carbon::parse($startDate) : now()->subMonth();
         $end = $endDate ? Carbon::parse($endDate) : now()->addMonths(3);
 
-        $response = Http::withToken($token)
+        $response = $this->httpWithToken($token)
             ->get("{$this->graphUrl}/me/calendar/events", [
                 '$filter' => "start/dateTime ge '{$start->format('Y-m-d\TH:i:s')}' and end/dateTime le '{$end->format('Y-m-d\TH:i:s')}'",
                 '$top' => 100,
-                '$select' => 'id,subject,bodyPreview,start,end,isAllDay,location,isReminderOn,isCancelled',
+                '$select' => 'id,subject,bodyPreview,start,end,isAllDay,location,isReminderOn,isCancelled,lastModifiedDateTime',
                 '$orderby' => 'start/dateTime',
             ]);
 
@@ -296,15 +319,28 @@ class OutlookCalendarService
             $existing = CalendarEvent::where('outlookEventId', $outlookEvent['id'])->first();
 
             if ($existing) {
-                // Update existing event from Outlook
-                $existing->update([
-                    'title' => $outlookEvent['subject'] ?? 'Outlook Event',
-                    'description' => $outlookEvent['bodyPreview'] ?? null,
-                    'startDateTime' => Carbon::parse($outlookEvent['start']['dateTime']),
-                    'endDateTime' => Carbon::parse($outlookEvent['end']['dateTime']),
-                    'allDay' => $outlookEvent['isAllDay'] ?? false,
-                    'location' => $outlookEvent['location']['displayName'] ?? null,
-                ]);
+                $outlookModifiedAt = isset($outlookEvent['lastModifiedDateTime']) 
+                    ? Carbon::parse($outlookEvent['lastModifiedDateTime'])->setTimezone('UTC') 
+                    : Carbon::minValue();
+                
+                $crmModifiedAt = $existing->updated_at 
+                    ? $existing->updated_at->copy()->setTimezone('UTC') 
+                    : Carbon::minValue();
+
+                if ($crmModifiedAt->greaterThan($outlookModifiedAt)) {
+                    // CRM event is newer. Push to Outlook instead. (Last Updated Wins)
+                    $this->updateEventInOutlook($existing, $connection);
+                } else {
+                    // Outlook event is newer. Update existing event from Outlook.
+                    $existing->update([
+                        'title' => $outlookEvent['subject'] ?? 'Outlook Event',
+                        'description' => $outlookEvent['bodyPreview'] ?? null,
+                        'startDateTime' => Carbon::parse($outlookEvent['start']['dateTime']),
+                        'endDateTime' => Carbon::parse($outlookEvent['end']['dateTime']),
+                        'allDay' => $outlookEvent['isAllDay'] ?? false,
+                        'location' => $outlookEvent['location']['displayName'] ?? null,
+                    ]);
+                }
             } else {
                 // Create new event from Outlook
                 CalendarEvent::create([

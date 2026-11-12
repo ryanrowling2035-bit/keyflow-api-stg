@@ -14,6 +14,7 @@ class Property extends Model
 
     protected $fillable = [
         'title',
+        'preview_token',
         'description',
         'referenceNumber',
         'category',

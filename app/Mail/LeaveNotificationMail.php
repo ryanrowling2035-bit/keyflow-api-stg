@@ -44,12 +44,18 @@ class LeaveNotificationMail extends Mailable
             default => "[LEAVE NOTIFICATION] {$leaveType} Update"
         };
 
-        $html = $this->renderHtml();
+        $bodyContent = $this->renderBodyHtml();
+
+        $html = view('EmailTemplate.templateLayout', [
+            'title' => $subject,
+            'body'  => $bodyContent,
+            'year'  => date('Y'),
+        ])->render();
 
         return $this->subject($subject)->html($html);
     }
 
-    protected function renderHtml(): string
+    protected function renderBodyHtml(): string
     {
         $type = $this->notificationType;
         $d = $this->details;
@@ -65,10 +71,20 @@ class LeaveNotificationMail extends Mailable
         $rejectionReason = nl2br(htmlspecialchars($d['rejection_reason'] ?? ''));
         $actionedBy = htmlspecialchars($d['actioned_by'] ?? 'HR / Management');
 
-        $badgeColor = match ($type) {
-            'approved' => '#059669',
+        $badgeBg = match ($type) {
+            'approved' => '#f0fdf4',
+            'rejected' => '#fef2f2',
+            default => '#eff6ff'
+        };
+        $badgeBorder = match ($type) {
+            'approved' => '#16a34a',
             'rejected' => '#dc2626',
             default => '#2563eb'
+        };
+        $badgeText = match ($type) {
+            'approved' => '#15803d',
+            'rejected' => '#b91c1c',
+            default => '#1d4ed8'
         };
 
         $statusTitle = match ($type) {
@@ -88,72 +104,57 @@ class LeaveNotificationMail extends Mailable
         $rejectionBlock = '';
         if ($type === 'rejected' && !empty($rejectionReason)) {
             $rejectionBlock = "
-            <div style='margin-top: 16px; padding: 12px 16px; background-color: #fef2f2; border-left: 4px solid #dc2626; border-radius: 4px;'>
+            <div style='margin-top: 20px; padding: 14px 18px; background-color: #fef2f2; border-left: 4px solid #dc2626; border-radius: 4px;'>
                 <p style='margin: 0; color: #991b1b; font-size: 13px; font-weight: bold;'>Rejection Reason:</p>
-                <p style='margin: 4px 0 0; color: #7f1d1d; font-size: 14px;'>{$rejectionReason}</p>
+                <p style='margin: 6px 0 0; color: #7f1d1d; font-size: 14px; line-height: 1.5;'>{$rejectionReason}</p>
             </div>";
         }
 
         return "
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset='utf-8'>
-    <title>{$statusTitle}</title>
-</head>
-<body style='font-family: Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b;'>
-    <div style='max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);'>
-        <div style='background-color: {$badgeColor}; padding: 18px 24px; color: #ffffff;'>
-            <h2 style='margin: 0; font-size: 20px; font-weight: 600;'>Keyflow HR &bull; {$statusTitle}</h2>
-        </div>
-        
-        <div style='padding: 24px;'>
-            <p style='font-size: 15px; line-height: 1.5; margin-top: 0;'>{$statusMessage}</p>
-            
-            <table style='width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px;'>
-                <tr style='border-bottom: 1px solid #f1f5f9;'>
-                    <td style='padding: 10px 0; color: #64748b; width: 40%;'>Employee Name</td>
-                    <td style='padding: 10px 0; font-weight: 600; color: #0f172a;'>{$employeeName}</td>
-                </tr>
-                <tr style='border-bottom: 1px solid #f1f5f9;'>
-                    <td style='padding: 10px 0; color: #64748b;'>Leave Type</td>
-                    <td style='padding: 10px 0; font-weight: 600; color: #0f172a;'>{$leaveType}</td>
-                </tr>
-                <tr style='border-bottom: 1px solid #f1f5f9;'>
-                    <td style='padding: 10px 0; color: #64748b;'>Dates</td>
-                    <td style='padding: 10px 0; color: #0f172a;'>{$startDate} to {$endDate}</td>
-                </tr>
-                <tr style='border-bottom: 1px solid #f1f5f9;'>
-                    <td style='padding: 10px 0; color: #64748b;'>Working Days</td>
-                    <td style='padding: 10px 0; font-weight: 600; color: #0f172a;'>{$workingDays} day(s)</td>
-                </tr>
-                <tr style='border-bottom: 1px solid #f1f5f9;'>
-                    <td style='padding: 10px 0; color: #64748b;'>Manager Pre-Approved</td>
-                    <td style='padding: 10px 0; color: #0f172a;'>{$hasManagerApproved}</td>
-                </tr>
-                <tr style='border-bottom: 1px solid #f1f5f9;'>
-                    <td style='padding: 10px 0; color: #64748b;'>Work & Property Handover</td>
-                    <td style='padding: 10px 0; color: #0f172a;'>{$handoverTo}</td>
-                </tr>
-                <tr style='border-bottom: 1px solid #f1f5f9;'>
-                    <td style='padding: 10px 0; color: #64748b;'>Doctor's Sick Note</td>
-                    <td style='padding: 10px 0; color: #0f172a;'>{$hasDoctorNote}</td>
-                </tr>
-                <tr>
-                    <td style='padding: 10px 0; color: #64748b; vertical-align: top;'>Reason</td>
-                    <td style='padding: 10px 0; color: #0f172a;'>{$reason}</td>
-                </tr>
-            </table>
-
-            {$rejectionBlock}
+        <!-- STATUS BANNER -->
+        <div style='background-color: {$badgeBg}; border-left: 4px solid {$badgeBorder}; padding: 14px 18px; border-radius: 4px; margin-bottom: 24px;'>
+            <span style='font-size: 16px; font-weight: 700; color: {$badgeText};'>HR Notification &bull; {$statusTitle}</span>
         </div>
 
-        <div style='background-color: #f8fafc; padding: 14px 24px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8; text-align: center;'>
-            This is an automated notification from Keyflow CRM Leave Management System.
-        </div>
-    </div>
-</body>
-</html>";
+        <p style='margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: #333333;'>{$statusMessage}</p>
+
+        <!-- DETAILS TABLE -->
+        <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0' style='width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 14px; font-family: Arial, Helvetica, sans-serif;'>
+            <tr style='border-bottom: 1px solid #f0f2f5;'>
+                <td style='padding: 12px 0; color: #6b7280; width: 42%; font-weight: 500;'>Employee Name</td>
+                <td style='padding: 12px 0; color: #111827; font-weight: 600;'>{$employeeName}</td>
+            </tr>
+            <tr style='border-bottom: 1px solid #f0f2f5;'>
+                <td style='padding: 12px 0; color: #6b7280; font-weight: 500;'>Leave Type</td>
+                <td style='padding: 12px 0; color: #111827; font-weight: 600;'>{$leaveType}</td>
+            </tr>
+            <tr style='border-bottom: 1px solid #f0f2f5;'>
+                <td style='padding: 12px 0; color: #6b7280; font-weight: 500;'>Duration</td>
+                <td style='padding: 12px 0; color: #111827; font-weight: 600;'>{$startDate} to {$endDate}</td>
+            </tr>
+            <tr style='border-bottom: 1px solid #f0f2f5;'>
+                <td style='padding: 12px 0; color: #6b7280; font-weight: 500;'>Total Working Days</td>
+                <td style='padding: 12px 0; color: #111827; font-weight: 600;'>{$workingDays} day(s)</td>
+            </tr>
+            <tr style='border-bottom: 1px solid #f0f2f5;'>
+                <td style='padding: 12px 0; color: #6b7280; font-weight: 500;'>Manager Pre-Approved</td>
+                <td style='padding: 12px 0; color: #111827;'>{$hasManagerApproved}</td>
+            </tr>
+            <tr style='border-bottom: 1px solid #f0f2f5;'>
+                <td style='padding: 12px 0; color: #6b7280; font-weight: 500;'>Work & Property Handover</td>
+                <td style='padding: 12px 0; color: #111827;'>{$handoverTo}</td>
+            </tr>
+            <tr style='border-bottom: 1px solid #f0f2f5;'>
+                <td style='padding: 12px 0; color: #6b7280; font-weight: 500;'>Doctor\'s Sick Note</td>
+                <td style='padding: 12px 0; color: #111827;'>{$hasDoctorNote}</td>
+            </tr>
+            <tr>
+                <td style='padding: 12px 0; color: #6b7280; font-weight: 500; vertical-align: top;'>Reason</td>
+                <td style='padding: 12px 0; color: #111827;'>{$reason}</td>
+            </tr>
+        </table>
+
+        {$rejectionBlock}
+        ";
     }
 }
-

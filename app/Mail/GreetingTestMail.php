@@ -32,28 +32,28 @@ class GreetingTestMail extends Mailable
     public function build()
     {
         $subject = $this->template->subject ?? 'Test Greeting';
-        $body = $this->template->body ?? '<p>This is a test greeting.</p>';
+        $body = formatGreetingSignatureBlock($this->template->body ?? '<p>This is a test greeting.</p>');
 
         $agent = \App\Models\User::first();
 
         $photoHtml = $agent && $agent->profilePhoto 
-            ? '<img src="' . env('APP_URL') . '/storage/' . $agent->profilePhoto . '" alt="Agent" style="width:90px; height:90px; object-fit:cover; border-radius:8px;" />' 
-            : '<img src="https://ui-avatars.com/api/?name=' . urlencode($agent ? $agent->name : 'Agent') . '" alt="Agent" style="width:90px; height:90px; border-radius:8px;" />';
+            ? '<img src="' . getImageUrl($agent->profilePhoto) . '" alt="Agent" style="width:100px; height:110px; object-fit:cover; border-radius:4px; display:block;" />' 
+            : '<img src="https://ui-avatars.com/api/?name=' . urlencode($agent ? $agent->name : 'Agent') . '" alt="Agent" style="width:100px; height:110px; object-fit:cover; border-radius:4px; display:block;" />';
             
-        $agentName = $agent && $agent->name ? $agent->name : 'Sarah Jenkins';
+        $agentName = $agent && $agent->name ? $agent->name : 'Victoria Dewar';
         $agentPhone = $agent && $agent->phone ? $agent->phone : '+971 58 556 1813';
-        $agentEmail = $agent && $agent->email ? $agent->email : 'agent@exclusive-links.com';
+        $agentEmail = $agent && $agent->email ? $agent->email : 'victoria.d@exclusive-links.com';
         $brokerId = $agent ? $agent->meta()->where('metaKey', '_brokerId')->value('metaValue') : null;
-        $agentBrn = $brokerId ? 'BRN #: ' . $brokerId : 'BRN #: 02435356';
+        $agentBrn = $brokerId ?: ($agent && $agent->agentCode ? $agent->agentCode : '02435356');
 
-        $signatureHtml = '<table cellpadding="0" cellspacing="0" border="0" style="margin-top:20px; font-family: Arial, sans-serif;">
+        $signatureHtml = '<table cellpadding="0" cellspacing="0" border="0" style="margin-top:15px; font-family: Arial, sans-serif;">
             <tr>
                 <td style="padding-right: 15px; vertical-align: top;">' . $photoHtml . '</td>
-                <td style="vertical-align: top; font-size: 14px; color: #333; line-height: 1.5;">
-                    <strong>' . $agentName . '</strong><br>
-                    ' . $agentPhone . '<br>
-                    <a href="mailto:' . $agentEmail . '" style="color: #0056b3; text-decoration: none;">' . $agentEmail . '</a><br><br>
-                    <span style="font-size:12px; color:#666;">' . $agentBrn . '</span>
+                <td style="vertical-align: top; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #222222;">
+                    <div style="font-weight: bold; font-size: 15px; color: #111111;">' . htmlspecialchars($agentName) . '</div>
+                    ' . ($agentPhone ? '<div style="color: #333333; margin-top: 2px;">' . htmlspecialchars($agentPhone) . '</div>' : '') . '
+                    ' . ($agentEmail ? '<div style="margin-top: 2px;"><a href="mailto:' . htmlspecialchars($agentEmail) . '" style="color: #0044cc; text-decoration: underline;">' . htmlspecialchars($agentEmail) . '</a></div>' : '') . '
+                    ' . ($agentBrn ? '<div style="margin-top: 10px; font-size: 13px; color: #333333;">BRN #: ' . htmlspecialchars($agentBrn) . '</div>' : '') . '
                 </td>
             </tr>
         </table>';
@@ -61,11 +61,21 @@ class GreetingTestMail extends Mailable
         $vars = [
             '{Contact_First_Name}' => 'John',
             '{Contact_Last_Name}' => 'Doe',
+            '{Employee_First_Name}' => 'Alex',
+            '{Employee_Last_Name}' => 'Smith',
+            '{Employee_Name}' => 'Alex Smith',
+            '{Employee_Role}' => 'Senior Property Consultant',
+            '{Employee_Department}' => 'Sales',
+            '{Years_Completed}' => '5 Years',
+            '{Work_Anniversary_Years}' => '5 Years',
+            '{Joining_Date}' => '12 Nov 2021',
             '{Agent_Name}' => $agentName,
             '{Agent_Phone}' => $agentPhone,
             '{Agent_Email}' => $agentEmail,
             '{Agent_BRN}' => $agentBrn,
             '{Agent_Photo}' => $photoHtml,
+            '{Agent_Signature}' => $signatureHtml,
+            '{Agent_Card}' => $signatureHtml,
             '{Company_Name}' => 'Exclusive Links Real Estate'
         ];
 

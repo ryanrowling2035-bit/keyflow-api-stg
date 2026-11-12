@@ -115,7 +115,7 @@ class GreetingTemplateController extends Controller
 
         $validated = $request->validate([
             'name'          => 'sometimes|required|string|max:255',
-            'type'          => 'sometimes|required|in:Birthday,Holiday',
+            'type'          => 'sometimes|required|in:Birthday,Holiday,Work Anniversary,5 Year Milestone',
             'trigger_event' => 'nullable|string',
             'holiday_date'  => 'nullable|date',
             'send_time'     => 'nullable|string',
@@ -235,30 +235,39 @@ class GreetingTemplateController extends Controller
         try {
             $template = GreetingTemplate::findOrFail($id);
             
-            $sesKey = config('services.ses.key');
-            $sesSecret = config('services.ses.secret');
+            $useAws = (bool) config('mail.aws_greeting', false);
 
-            if (empty($sesKey) || empty($sesSecret)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'AWS SES credentials are not configured in .env. Greetings must strictly be sent via AWS SES and cannot use SMTP.',
-                ], 422);
+            if ($useAws) {
+                $sesKey = config('services.ses.key');
+                $sesSecret = config('services.ses.secret');
+
+                if (empty($sesKey) || empty($sesSecret)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'AWS SES credentials are not configured in .env. Configure them or set AWS_GREETING=false to use SMTP.',
+                    ], 422);
+                }
             }
 
             $mailable = new \App\Mail\GreetingTestMail($template);
-            $customFromAddress = config('mail.greetings_from.address') ?: config('mail.from.address');
-            $customFromName = config('mail.greetings_from.name') ?? config('mail.from.name');
+            $customFromAddress = ($useAws && config('mail.greetings_from.address'))
+                ? config('mail.greetings_from.address')
+                : config('mail.from.address');
+            $customFromName = ($useAws && config('mail.greetings_from.name'))
+                ? config('mail.greetings_from.name')
+                : config('mail.from.name');
 
             if (! empty($customFromAddress)) {
                 $mailable->from($customFromAddress, $customFromName);
             }
 
-            \Mail::mailer('ses')->to($request->email)->send($mailable);
-            \Log::info('Greeting test email sent via AWS SES to: ' . $request->email);
+            $mailer = $useAws ? 'ses' : config('mail.default', 'smtp');
+            \Mail::mailer($mailer)->to($request->email)->send($mailable);
+            \Log::info("Greeting test email sent via {$mailer} to: " . $request->email);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Test email sent successfully via AWS SES to ' . $request->email,
+                'message' => "Test email sent successfully via {$mailer} to " . $request->email,
             ]);
         } catch (\Exception $e) {
             return response()->json([

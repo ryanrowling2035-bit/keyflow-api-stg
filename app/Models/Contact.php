@@ -287,6 +287,38 @@ class Contact extends Model
         });
     }
 
+    /**
+     * Scope to exclude contacts who have opted out of automated emails or all emails.
+     */
+    public function scopeNotOptedOutOfAutomatedEmail($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('communityPreference')
+                ->orWhere(function ($sub) {
+                    $sub->whereJsonDoesntContain('communityPreference', 'automatedEmailOptOut')
+                        ->whereJsonDoesntContain('communityPreference', 'emailOptOut');
+                });
+        });
+    }
+
+    /**
+     * Check if this contact has opted out of automated emails or all emails.
+     */
+    public function hasOptedOutOfAutomatedEmail(): bool
+    {
+        $prefs = $this->communityPreference;
+        if (is_string($prefs)) {
+            $prefs = json_decode($prefs, true);
+        }
+
+        if (empty($prefs) || ! is_array($prefs)) {
+            return false;
+        }
+
+        return in_array('automatedEmailOptOut', $prefs, true)
+            || in_array('emailOptOut', $prefs, true);
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'createdBy');

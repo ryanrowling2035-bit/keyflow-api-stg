@@ -1459,6 +1459,213 @@ class PropertiesController extends Controller
         }
     }
 
+    public function sendWhatsAppProperty(Request $request)
+    {
+        $request->validate([
+            'propertyId' => 'required',
+            'contactPhones' => 'required|array|min:1',
+            'type' => 'nullable|string|in:flyer,link,brochure,custom',
+            'customMessage' => 'nullable|string',
+            'mediaUrl' => 'nullable|string',
+            'templateSlug' => 'nullable|string',
+            'flyerFormat' => 'nullable|string',
+        ]);
+
+        try {
+            $property = Property::with([
+                'media:id,propertyId,mediaType,compressedPath,originalPath,filePath,fileName',
+                'agent:id,name,email,phone',
+                'community',
+                'subCommunity',
+                'buildingTower'
+            ])->find($request->propertyId);
+
+            if (! $property) {
+                return $this->error('The requested property was not found.', 422);
+            }
+
+            $contactPhones = $request->contactPhones;
+            $type = $request->type ?? 'link';
+            $customMessage = $request->customMessage ?? '';
+            $mediaUrl = $request->mediaUrl ?? '';
+            $templateSlug = $request->templateSlug;
+            $flyerFormat = $request->flyerFormat ?? 'square';
+
+            // If brochure PDF was requested and mediaUrl not provided, generate PDF on-the-fly
+            if ($type === 'brochure' && empty($mediaUrl) && ! empty($templateSlug)) {
+                try {
+                    $storagePath = "propertymediapdf/{$property->id}/{$templateSlug}/{$templateSlug}.pdf";
+                    $propertyForDoc = $this->getPropertyForDocumentGeneration($property->id, false);
+                    if ($propertyForDoc && array_key_exists($templateSlug, Constants::PDF_TEMPLATES)) {
+                        $pdf = $this->propertyPdfService->generatePdf($propertyForDoc, $templateSlug);
+                        $mediaUrl = $this->fileStorage->putPublic($storagePath, $pdf->output());
+                    }
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('[WhatsApp send brochure PDF generation error]', ['err' => $e->getMessage()]);
+                }
+            }
+
+            // Construct the customer message that goes out
+            if (! empty($customMessage)) {
+                $customerMessage = $customMessage;
+                // Only append mediaUrl as text link for non-flyer or when type is link
+                if ($type !== 'flyer' && ! empty($mediaUrl) && ! str_contains($customerMessage, $mediaUrl)) {
+                    $customerMessage .= "\n" . $mediaUrl;
+                }
+            } elseif ($type === 'flyer') {
+                $details = array_filter([
+                    ($property->referenceNumber ?? $property->referenceNo) ? 'Ref: ' . ($property->referenceNumber ?? $property->referenceNo) : null,
+                    $property->bedrooms ? $property->bedrooms . ' Bed' : null,
+                    $property->price ? 'Price: AED ' . number_format($property->price) : null,
+                ]);
+                $detailsStr = ! empty($details) ? ' (' . implode(' | ', $details) . ')' : '';
+                $customerMessage = ($property->title ?? 'Property Details') . $detailsStr;
+            } elseif ($type === 'brochure') {
+                $customerMessage = ($property->title ?? 'Property Brochure') . ($mediaUrl ? "\n" . $mediaUrl : '');
+            } else {
+                $customerMessage = "Property: {$property->title}" . ($mediaUrl ? "\nLink: {$mediaUrl}" : '');
+            }
+
+            $metaToken = env('WHATSAPP_ACCESS_TOKEN');
+            $phoneNumberId = env('WHATSAPP_PHONE_NUMBER_ID');
+
+            $sendResults = [];
+
+            // Case A: Meta WhatsApp Cloud API is configured
+            if (! empty($metaToken) && ! empty($phoneNumberId)) {
+                foreach ($contactPhones as $phone) {
+                    $cleanPhone = preg_replace('/[^0-9]/', '', $phone);
+                    $payload = [
+                        'messaging_product' => 'whatsapp',
+                        'recipient_type' => 'individual',
+                        'to' => $cleanPhone,
+                    ];
+
+                    if ($type === 'flyer' && ! empty($mediaUrl)) {
+                        $payload['type'] = 'image';
+                        $payload['image'] = [
+                            'link' => $mediaUrl,
+                            'caption' => $customMessage ?: ($property->title ?? 'Property Flyer'),
+                        ];
+                    } elseif ($type === 'brochure' && ! empty($mediaUrl)) {
+                        $templateName = (!empty($templateSlug) && isset(Constants::PDF_TEMPLATES[$templateSlug])) 
+                            ? Constants::PDF_TEMPLATES[$templateSlug] 
+                            : 'Brochure';
+                        $cleanRef = preg_replace('/[^a-zA-Z0-9_-]/', '_', ($property->referenceNumber ?? $property->referenceNo ?? $property->id));
+                        $filename = 'Property_' . $cleanRef . '_' . ($templateSlug ?: 'Brochure') . '.pdf';
+                        $payload['type'] = 'document';
+                        $payload['document'] = [
+                            'link' => $mediaUrl,
+                            'caption' => $customMessage ?: ($property->title ?? 'Property ' . $templateName),
+                            'filename' => $filename,
+                        ];
+                    } else {
+                        $payload['type'] = 'text';
+                        $payload['text'] = [
+                            'preview_url' => true,
+                            'body' => $customerMessage,
+                        ];
+                    }
+
+                    try {
+                        $response = \Illuminate\Support\Facades\Http::withToken($metaToken)
+                            ->timeout(15)
+                            ->post("https://graph.facebook.com/v18.0/{$phoneNumberId}/messages", $payload);
+
+                        $sendResults[] = [
+                            'phone' => $phone,
+                            'status' => $response->status(),
+                            'result' => $response->json(),
+                        ];
+                    } catch (\Throwable $e) {
+                        $sendResults[] = [
+                            'phone' => $phone,
+                            'error' => $e->getMessage(),
+                        ];
+                    }
+                }
+            } else {
+                // Case B: metaToken is empty / not configured (Dev / Mock Mode)
+                \Illuminate\Support\Facades\Log::info('[WhatsApp Property Send - Dev/Mock]:', [
+                    'propertyId' => $property->id,
+                    'reference' => $property->referenceNo ?? $property->id,
+                    'contactPhones' => $contactPhones,
+                    'type' => $type,
+                    'message' => $customerMessage,
+                    'mediaUrl' => $mediaUrl,
+                    'flyerFormat' => $flyerFormat,
+                ]);
+
+                foreach ($contactPhones as $phone) {
+                    $sendResults[] = [
+                        'phone' => $phone,
+                        'status' => 200,
+                        'message' => 'WhatsApp queued successfully (Mock/Test mode)',
+                    ];
+                }
+            }
+
+            // Entry in Activity Table (logs customer message)
+            try {
+                $phonesList = implode(', ', $contactPhones);
+                $activityDescription = "Sent WhatsApp to {$phonesList}: {$customerMessage}";
+
+                $params = [
+                    'action' => 'sent_whatsapp',
+                    'module' => Constants::MODULE_PROPERTY,
+                    'moduleId' => $property->id,
+                    'description' => $activityDescription,
+                    'newValues' => [
+                        'message' => $customerMessage,
+                        'contactPhones' => $contactPhones,
+                        'type' => $type,
+                        'mediaUrl' => $mediaUrl,
+                        'flyerFormat' => $flyerFormat,
+                    ],
+                    'extraData' => [
+                        'message' => $customerMessage,
+                        'contactPhones' => $contactPhones,
+                    ],
+                ];
+                logUserActivity($params);
+
+                // Also log on matched Contact records if available
+                $matchedContacts = Contact::whereIn('phone', $contactPhones)->get();
+                foreach ($matchedContacts as $contact) {
+                    logUserActivity([
+                        'action' => 'sent_whatsapp',
+                        'module' => Constants::MODULE_CONTACT,
+                        'moduleId' => $contact->id,
+                        'description' => "Sent WhatsApp for property {$property->title}: {$customerMessage}",
+                        'newValues' => [
+                            'propertyId' => $property->id,
+                            'message' => $customerMessage,
+                        ],
+                    ]);
+                }
+
+                logPropertyHistory([
+                    'propertyId' => $property->id,
+                    'field' => 'whatsapp_sent',
+                    'newValue' => json_encode([
+                        'message' => $customerMessage,
+                        'contactPhones' => $contactPhones,
+                    ]),
+                ]);
+            } catch (\Throwable $t) {
+                // ignore activity log failures
+            }
+
+            return $this->success([
+                'sentCount' => count($contactPhones),
+                'results' => $sendResults,
+            ], 'WhatsApp message sent successfully');
+
+        } catch (\Exception $e) {
+            return $this->exceptionResponse('PropertiesController : sendWhatsAppProperty', $e);
+        }
+    }
+
     public function sendEmailProperty(Request $request, $id)
     {
         $request->validate([

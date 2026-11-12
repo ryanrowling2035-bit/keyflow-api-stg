@@ -70,6 +70,15 @@ Schedule::command('hr:check-document-expiries')
     ->timezone($scheduleTimezone)
     ->withoutOverlapping();
 
+// Outlook Background Sync (Calendar & Emails)
+Schedule::command('outlook:sync-calendars')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping();
+
+Schedule::command('outlook:sync-emails')
+    ->everyTenMinutes()
+    ->withoutOverlapping();
+
 /*
 Schedule::command('app:send-hot-enquiry-no-activity')
     ->hourly()

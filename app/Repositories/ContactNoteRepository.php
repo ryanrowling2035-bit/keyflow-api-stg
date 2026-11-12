@@ -52,12 +52,50 @@ class ContactNoteRepository
 
         if ($type) {
             $query->where('type', $type);
+            $notes = $query->orderBy('id', 'desc')->get();
 
-            return $query->orderBy('id', 'desc')->get();
+            if ($type === 'email') {
+                $notes = $this->mergeContactEmails($contactId, $notes);
+            }
+
+            return $notes;
         }
 
-        return $query->orderBy('id', 'desc')
-            ->get()
-            ->groupBy('type');
+        $allNotes = $query->orderBy('id', 'desc')->get();
+        $allNotes = $this->mergeContactEmails($contactId, $allNotes);
+
+        return collect($allNotes)->groupBy('type');
+    }
+
+    private function mergeContactEmails($contactId, $notes)
+    {
+        $contactEmails = \App\Models\ContactEmail::where('contact_id', $contactId)
+            ->orderBy('received_at', 'desc')
+            ->get();
+
+        $contact = Contact::find($contactId);
+        $contactEmailStr = $contact ? $contact->email : '';
+
+        $mappedEmails = $contactEmails->map(function ($ce) use ($contactEmailStr) {
+            return [
+                'id' => 'ce_' . $ce->id,
+                'contactId' => $ce->contact_id,
+                'type' => 'email',
+                'conversation_id' => $ce->conversation_id,
+                'content' => [
+                    'isFromOutlook' => true,
+                    'direction' => $ce->is_incoming ? 'incoming' : 'outgoing',
+                    'subject' => $ce->subject,
+                    'from' => $ce->sender_name ? "{$ce->sender_name} <{$ce->sender_email}>" : $ce->sender_email,
+                    'to' => $ce->is_incoming ? '' : $contactEmailStr,
+                    'body' => $ce->body ?: $ce->snippet,
+                ],
+                'created_at' => $ce->received_at,
+                'creator' => null,
+                'replies' => []
+            ];
+        });
+
+        return collect($notes)->concat($mappedEmails)->sortByDesc('created_at')->values();
     }
 }

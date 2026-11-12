@@ -33,6 +33,7 @@ class CalendarEventResource extends JsonResource
             'isOverdue' => $this->isOverdue,
             'isFromOutlook' => $this->isFromOutlook,
             'isSyncedToOutlook' => $this->isSyncedToOutlook,
+            'outlookEventId' => $this->outlookEventId,
             'isPrivate' => $this->isPrivate,
             'assignedTo' => $this->assignedUser ? [
                 'id' => $this->assignedUser->id,

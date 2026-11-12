@@ -32,7 +32,7 @@ class GlobalConstantController extends Controller
                     ->map(function ($modulePermissions, $module) {
                         $result = ['module' => $module];
 
-                        foreach (['view', 'create', 'edit', 'delete'] as $action) {
+                        foreach (['view', 'create', 'edit', 'delete', 'approve'] as $action) {
                             if ($modulePermissions->contains('action', $action)) {
                                 $result[$action] = true;
                             }

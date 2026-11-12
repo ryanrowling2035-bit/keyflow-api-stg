@@ -30,7 +30,7 @@ class PermissionController extends Controller
 
                         $action = strtolower($allPermissions[$permissionName]->action ?? '');
 
-                        if (in_array($action, ['view', 'create', 'edit', 'delete'])) {
+                        if (in_array($action, ['view', 'create', 'edit', 'delete', 'approve'])) {
                             $modulePermission[$action] = true;
                         }
                     }

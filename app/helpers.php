@@ -1051,3 +1051,33 @@ if (! function_exists('generatePropertyReferenceNumber')) {
         return app(PropertyService::class)->generateReferenceNumber($data);
     }
 }
+
+if (! function_exists('formatGreetingSignatureBlock')) {
+    /**
+     * If a greeting template contains {Agent_Photo} along with other agent details
+     * (e.g. {Agent_Name}, {Agent_Email}, {Agent_Phone}, {Agent_BRN}), cluster them
+     * into a single {Agent_Signature} token so they render side-by-side (photo on left,
+     * details on right) rather than stacked vertically across separate lines.
+     */
+    function formatGreetingSignatureBlock(?string $html): string
+    {
+        if (empty($html) || strpos($html, '{Agent_Photo}') === false) {
+            return (string) $html;
+        }
+
+        $tagPattern = '(?:<br\s*\/?>|<\/?p>|<\/?strong>|<\/?span[^>]*>|\s)*(?:\{Agent_Name\}|\{Agent_Photo\}|\{Agent_Email\}|\{Agent_Phone\}|\{Agent_BRN\})(?:<br\s*\/?>|<\/?p>|<\/?strong>|<\/?span[^>]*>|\s)*';
+        $pattern = '/((?:' . $tagPattern . '){2,})/i';
+
+        $transformed = preg_replace_callback($pattern, function ($matches) {
+            if (strpos($matches[1], '{Agent_Photo}') !== false) {
+                return '</p>{Agent_Signature}<p>';
+            }
+            return $matches[1];
+        }, $html);
+
+        $transformed = preg_replace('/<p>\s*(?:<br\s*\/?>)?\s*<\/p>/i', '', $transformed);
+        $transformed = preg_replace('/<p>\s*$/i', '', $transformed);
+
+        return $transformed;
+    }
+}

@@ -20,6 +20,13 @@ class LeaveSettingController extends Controller
             $query->where('name', 'like', '%' . $request->search . '%');
         }
 
+        if ($request->has('is_active') && $request->is_active !== 'all') {
+            $isActive = filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($isActive !== null) {
+                $query->where('is_active', $isActive);
+            }
+        }
+
         if ($request->input('take_all') === 'all') {
             $items = $query->orderBy('id', 'desc')->get();
             return response()->json([

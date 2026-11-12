@@ -66,7 +66,7 @@ class TaskService
         $this->handleEnquiryStatusTransition($task, $qualifying);
 
         // Auto-create a calendar event for this task
-        // $this->createCalendarEventForTask($task);
+        $this->createCalendarEventForTask($task);
 
         // If status is closeFollowUp or done, create a duplicate task with pending status
         $this->createPendingFollowUpIfNeeded($task);

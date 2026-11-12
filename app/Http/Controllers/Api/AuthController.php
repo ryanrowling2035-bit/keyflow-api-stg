@@ -296,17 +296,17 @@ class AuthController extends Controller
                 if (empty($dept)) {
                     $rName = strtolower($user->role?->name ?? '');
                     if (str_contains($rName, 'agent') || str_contains($rName, 'manager')) {
-                        $dept = 'Sales';
+                        $dept = '';
                     } elseif (str_contains($rName, 'hr')) {
-                        $dept = 'Human Resources';
+                        $dept = '';
                     } elseif (str_contains($rName, 'admin')) {
-                        $dept = 'Management';
+                        $dept = '';
                     }
                 }
 
                 return [
                     'id' => $user->id,
-                    'employee_id' => $user->employee_id ?? $user->agentCode ?? ('EMP-' . str_pad($user->id, 4, '0', STR_PAD_LEFT)),
+                    'employee_id' => $user->employee_id ?? $user->agentCode ?? "",
                     'name' => $user->name,
                     'department' => $dept,
                     'department_name' => $dept,

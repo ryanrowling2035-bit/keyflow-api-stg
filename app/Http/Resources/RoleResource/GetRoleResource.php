@@ -37,7 +37,7 @@ class GetRoleResource extends JsonResource
                     foreach ($permissions as $permission) {
                         $action = strtolower($permission->action ?? '');
 
-                        if (in_array($action, ['view', 'create', 'edit', 'delete'])) {
+                        if (in_array($action, ['view', 'create', 'edit', 'delete', 'approve'])) {
                             $modulePermissions[$action] = true;
                         }
                     }

@@ -23,8 +23,11 @@ return [
     |
     | Used specifically for automated greeting & bulk emails (e.g. AWS SES) so
     | that default SMTP remains isolated for standard CRM transactional emails.
+    | Set AWS_GREETING=true in .env to send via AWS SES, or false to use SMTP.
     |
     */
+
+    'aws_greeting' => filter_var(env('AWS_GREETING', env('AWSGreeting', false)), FILTER_VALIDATE_BOOLEAN),
 
     'greetings_mailer' => env('GREETINGS_MAIL_MAILER', 'ses'),
 

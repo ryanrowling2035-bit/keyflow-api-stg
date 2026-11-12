@@ -2,7 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BoostController;
-// use App\Http\Controllers\Api\CalendarController;
+use App\Http\Controllers\Api\CalendarController;
 use App\Http\Controllers\Api\ClosingController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\ContactNoteController;
@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\MarketingAssetController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OfferController;
 use App\Http\Controllers\Api\OutlookSyncController;
+use App\Http\Controllers\Api\UnmatchedEmailController;
 use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\PortalSettingController;
 use App\Http\Controllers\Api\PropertiesController;
@@ -230,6 +231,7 @@ Route::middleware('jwt.auth')->group(function () {
     Route::get('propertyApprovalHistory/{id}', [PropertiesController::class, 'getPropertyApprovalHistoryById']);
     Route::get('propertiesExportCsv', [PropertiesController::class, 'exportPropertiesCsv']);
     Route::post('send/email/property/{id}', [PropertiesController::class, 'sendEmailProperty']);
+    Route::post('send/whatsapp/property', [PropertiesController::class, 'sendWhatsAppProperty']);
     Route::post('send/email/multiple/properties', [PropertyEmailController::class, 'sendEmailMultipleProperties']);
     Route::post('property/{id}/composeEmail', [PropertiesController::class, 'composeEmail']);
     Route::post('send/email/enquiryQuotationByProperty', [PropertiesController::class, 'sendEnquiryQuotationByProperty']);
@@ -466,19 +468,26 @@ Route::middleware('jwt.auth')->group(function () {
     Route::post('/push-subscriptions', [PushSubscriptionController::class, 'store']);
     Route::delete('/push-subscriptions', [PushSubscriptionController::class, 'destroy']);
 
-    // Calendar Routes (now handled via Task — TaskService auto-creates calendar events)
-    // Route::get('/calendar/events', [CalendarController::class, 'getEvents']);
-    // Route::post('/calendar/events', [CalendarController::class, 'createEvent']);
-    // Route::get('/calendar/events/types', [CalendarController::class, 'getEventTypes']);
-    // Route::get('/calendar/events/{id}', [CalendarController::class, 'getEventById'])->whereNumber('id');
-    // Route::put('/calendar/events/{id}', [CalendarController::class, 'updateEvent'])->whereNumber('id');
-    // Route::put('/calendar/events/{id}/reschedule', [CalendarController::class, 'rescheduleEvent'])->whereNumber('id');
-    // Route::delete('/calendar/events/{id}', [CalendarController::class, 'deleteEvent'])->whereNumber('id');
+    // Calendar Routes
+    Route::get('/calendar/events', [CalendarController::class, 'getEvents']);
+    Route::post('/calendar/events', [CalendarController::class, 'createEvent']);
+    Route::get('/calendar/events/types', [CalendarController::class, 'getEventTypes']);
+    Route::get('/calendar/events/{id}', [CalendarController::class, 'getEventById'])->whereNumber('id');
+    Route::put('/calendar/events/{id}', [CalendarController::class, 'updateEvent'])->whereNumber('id');
+    Route::put('/calendar/events/{id}/reschedule', [CalendarController::class, 'rescheduleEvent'])->whereNumber('id');
+    Route::delete('/calendar/events/{id}', [CalendarController::class, 'deleteEvent'])->whereNumber('id');
 
     // Outlook Sync Routes (require auth)
     Route::get('/outlook/status', [OutlookSyncController::class, 'status']);
     Route::get('/outlook/disconnect', [OutlookSyncController::class, 'disconnect']);
+    Route::post('/outlook/sync-calendar', [OutlookSyncController::class, 'syncCalendar']);
+    Route::post('/outlook/sync-email', [OutlookSyncController::class, 'syncEmail']);
     Route::get('/oauth/microsoft/redirect', [OutlookSyncController::class, 'redirectToMicrosoft']);
+
+    // Unmatched Emails Routes (require auth)
+    Route::get('/unmatched-emails', [UnmatchedEmailController::class, 'index']);
+    Route::post('/unmatched-emails/{id}/link-contact', [UnmatchedEmailController::class, 'linkContact']);
+    Route::delete('/unmatched-emails/{id}', [UnmatchedEmailController::class, 'destroy']);
 
     // Document Center Routes
     Route::get('document/get', [DocumentCenterController::class, 'index']);
@@ -546,6 +555,9 @@ Route::middleware('jwt.auth')->group(function () {
     // User Activities
     Route::get('user/activities', [UserActivityController::class, 'index']);
     Route::get('user/activities/{module}/{moduleId}', [UserActivityController::class, 'getByModule']);
+
+    // Property Preview Token Route
+    Route::get('properties/preview-token/{id}', [\App\Http\Controllers\Api\PropertyPreviewController::class, 'generateToken']);
 });
 
 // External integration routes (Sanctum personal access token auth)
@@ -563,6 +575,9 @@ Route::post('webhooks/bayut', [ExternalController::class, 'captureBayutWebhook']
 
 Route::get('/oauth/microsoft/callback', [OutlookSyncController::class, 'handleMicrosoftCallback']);
 Route::get('generic-xml', [PropertiesController::class, 'exclusiveLinksListingsXml']);
+
+// Public Property Preview Endpoint
+Route::get('preview/{token}', [\App\Http\Controllers\Api\PropertyPreviewController::class, 'getPreview']);
 
 // Inbound WhatsApp webhook (360degreeapps) — customer replies / free-text messages
 Route::post('webhook/whatsapp/inbound', [WhatsAppWebhookController::class, 'handle']);

@@ -113,6 +113,31 @@ class Permissions
                 'slug' => 'user_activity',
                 'roles' => ['view user_activity'],
             ],
+            'hrDashboard' => [
+                'name' => 'HR Dashboard',
+                'slug' => 'hr_dashboard',
+                'roles' => ['view hr_dashboard'],
+            ],
+            'hrEmployees' => [
+                'name' => 'Employee Directory',
+                'slug' => 'hr_employees',
+                'roles' => ['view hr_employees', 'create hr_employees', 'edit hr_employees', 'delete hr_employees'],
+            ],
+            'leaves' => [
+                'name' => 'Leave Management',
+                'slug' => 'leaves',
+                'roles' => ['view leaves', 'create leaves', 'edit leaves', 'delete leaves', 'approve leaves'],
+            ],
+            'attendance' => [
+                'name' => 'Attendance',
+                'slug' => 'attendance',
+                'roles' => ['view attendance', 'create attendance', 'edit attendance'],
+            ],
+            'leaveSettings' => [
+                'name' => 'Leave Settings',
+                'slug' => 'leave_settings',
+                'roles' => ['view leave_settings', 'create leave_settings', 'edit leave_settings', 'delete leave_settings'],
+            ],
         ],
 
         'Agent' => [
@@ -166,14 +191,44 @@ class Permissions
                 'slug' => 'closing',
                 'roles' => ['view closing', 'create closing', 'edit closing', 'delete closing'],
             ],
+            'leaves' => [
+                'name' => 'Leave Management',
+                'slug' => 'leaves',
+                'roles' => ['view leaves', 'create leaves'],
+            ],
         ],
 
-        // HR manages user records only — no properties, enquiries or contacts.
+        // HR manages user records & full HR Operations suite.
         'HR' => [
             'users' => [
                 'name' => 'Users',
                 'slug' => 'users',
                 'roles' => ['view users', 'create users', 'edit users', 'delete users'],
+            ],
+            'hrDashboard' => [
+                'name' => 'HR Dashboard',
+                'slug' => 'hr_dashboard',
+                'roles' => ['view hr_dashboard'],
+            ],
+            'hrEmployees' => [
+                'name' => 'Employee Directory',
+                'slug' => 'hr_employees',
+                'roles' => ['view hr_employees', 'create hr_employees', 'edit hr_employees', 'delete hr_employees'],
+            ],
+            'leaves' => [
+                'name' => 'Leave Management',
+                'slug' => 'leaves',
+                'roles' => ['view leaves', 'create leaves', 'edit leaves', 'delete leaves', 'approve leaves'],
+            ],
+            'attendance' => [
+                'name' => 'Attendance',
+                'slug' => 'attendance',
+                'roles' => ['view attendance', 'create attendance', 'edit attendance'],
+            ],
+            'leaveSettings' => [
+                'name' => 'Leave Settings',
+                'slug' => 'leave_settings',
+                'roles' => ['view leave_settings', 'create leave_settings', 'edit leave_settings', 'delete leave_settings'],
             ],
         ],
     ];
@@ -255,6 +310,12 @@ class Permissions
             'Documents' => 'documents',
             'Email Templates' => 'email_templates',
             'User Activity' => 'user_activity',
+            'HR Dashboard' => 'hr_dashboard',
+            'Employee Directory' => 'hr_employees',
+            'Leave Management' => 'leaves',
+            'Leave Requests' => 'leaves',
+            'Attendance' => 'attendance',
+            'Leave Settings' => 'leave_settings',
         ];
     }
 
@@ -281,6 +342,7 @@ class Permissions
                 'create' => 'create',
                 'edit' => 'edit',
                 'delete' => 'delete',
+                'approve' => 'approve',
             ];
 
             foreach ($actionMap as $actionKey => $actionValue) {

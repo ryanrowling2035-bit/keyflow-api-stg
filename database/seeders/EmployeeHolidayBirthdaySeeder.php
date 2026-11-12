@@ -115,7 +115,7 @@ class EmployeeHolidayBirthdaySeeder extends Seeder
                 'status' => 'Active',
                 'target_audience' => 'Clients',
                 'subject' => 'Happy Birthday {Contact_First_Name} from {Company_Name}!',
-                'body' => '<p>Dear <strong>{Contact_First_Name}</strong>,</p><p>Wishing you a fantastic Birthday filled with joy and celebration!</p><p>Thank you for being a valued client of <strong>{Company_Name}</strong>.</p><p>Best regards,<br/><strong>{Agent_Name}</strong><br/>{Company_Name}</p>',
+                'body' => '<p>Dear <strong>{Contact_First_Name}</strong>,</p><p>Wishing you a fantastic Birthday filled with joy and celebration!</p><p>Thank you for being a valued client of <strong>{Company_Name}</strong>.</p><p>Best regards,</p>{Agent_Signature}',
             ],
             [
                 'name' => 'Default Client Holiday Greeting',
@@ -126,7 +126,7 @@ class EmployeeHolidayBirthdaySeeder extends Seeder
                 'status' => 'Active',
                 'target_audience' => 'Clients',
                 'subject' => 'Season’s Greetings & Happy Holidays from {Company_Name}!',
-                'body' => '<p>Dear <strong>{Contact_First_Name}</strong>,</p><p>Wishing you and your loved ones a joyful holiday season and a prosperous New Year!</p><p>Warmest regards,<br/><strong>{Agent_Name}</strong><br/>{Company_Name}</p>',
+                'body' => '<p>Dear <strong>{Contact_First_Name}</strong>,</p><p>Wishing you and your loved ones a joyful holiday season and a prosperous New Year!</p><p>Warmest regards,</p>{Agent_Signature}',
             ],
         ];
 

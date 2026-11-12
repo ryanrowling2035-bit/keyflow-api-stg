@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Constants\Constants;
+use App\Events\NotificationCreated;
 use App\Http\Controllers\Controller;
 use App\Mail\LeaveNotificationMail;
 use App\Models\Leave;
@@ -144,20 +146,47 @@ class LeaveController extends Controller
                 'status' => 'pending',
             ]);
 
-            // Notify manager or admin users
-            $manager = null;
+            // Notify manager and superadmin users
+            $recipients = collect();
+
+            // 1. Resolve manager
             $managerId = $targetUser->manager?->id ?? $targetUser->manager_id;
             if (!$managerId && $targetUser->createdBy) {
                 $managerId = $targetUser->createdBy;
             }
             if ($managerId) {
                 $manager = User::find($managerId);
+                if ($manager && (int) $manager->id !== (int) $targetUser->id) {
+                    $recipients->put($manager->id, $manager);
+                }
             }
 
-            if ($manager) {
+            // 2. Resolve SuperAdmin users
+            $superAdmins = User::where(function ($query) {
+                $query->whereHas('role', function ($q) {
+                    $q->where('name', Constants::SUPER_ADMIN)
+                      ->orWhereRaw('LOWER(name) = ?', ['superadmin']);
+                })
+                ->orWhere('roleId', 1);
+            })
+            ->where(function ($q) {
+                $q->where('status', Constants::USER_STATUS_ACTIVE)
+                  ->orWhereNull('status');
+            })
+            ->get();
+
+            foreach ($superAdmins as $superAdmin) {
+                if ((int) $superAdmin->id !== (int) $targetUser->id) {
+                    $recipients->put($superAdmin->id, $superAdmin);
+                }
+            }
+
+            // Dispatch in-app notifications and email to all recipients
+            foreach ($recipients as $recipient) {
+                // In-app Notification
                 try {
-                    Notification::create([
-                        'userId' => $manager->id,
+                    $notification = Notification::create([
+                        'userId' => $recipient->id,
                         'type' => 'leave_requested',
                         'title' => 'New Leave Request',
                         'message' => "{$targetUser->name} has requested {$workingDays} day(s) of " . ucfirst($request->leave_type) . " leave.",
@@ -166,12 +195,21 @@ class LeaveController extends Controller
                         'actorId' => $targetUser->id,
                         'isRead' => false,
                     ]);
-                } catch (\Throwable $tn) {}
 
-                // Dispatch Email Notification to Manager
-                if (!empty($manager->email)) {
+                    if (class_exists(NotificationCreated::class)) {
+                        try {
+                            $notification->load('actor:id,name,profilePhoto');
+                            broadcast(new NotificationCreated($notification))->toOthers();
+                        } catch (\Throwable $tb) {}
+                    }
+                } catch (\Throwable $tn) {
+                    Log::warning('Leave request notification creation failed for user ' . $recipient->id . ': ' . $tn->getMessage());
+                }
+
+                // Dispatch Email Notification
+                if (!empty($recipient->email)) {
                     try {
-                        Mail::to($manager->email)->send(new LeaveNotificationMail('submitted', [
+                        Mail::to($recipient->email)->send(new LeaveNotificationMail('submitted', [
                             'employee_name' => $targetUser->name,
                             'leave_type' => $request->leave_type,
                             'start_date' => $startDate->toDateString(),
@@ -183,7 +221,7 @@ class LeaveController extends Controller
                             'has_doctor_note' => $request->input('has_doctor_note', 'NO'),
                         ]));
                     } catch (\Throwable $tm) {
-                        Log::warning('Leave submission email notification failed: ' . $tm->getMessage());
+                        Log::warning('Leave submission email notification failed for user ' . $recipient->email . ': ' . $tm->getMessage());
                     }
                 }
             }
@@ -386,6 +424,25 @@ class LeaveController extends Controller
 
             $approver = auth()->user();
 
+            if (! $approver) {
+                return $this->error('Unauthenticated', 401);
+            }
+
+            // Agents are not authorized to approve leaves
+            if ($approver->role && strcasecmp($approver->role->name, 'Agent') === 0) {
+                return $this->error('Agents are not authorized to approve leave requests.', 403);
+            }
+
+            // Check permission to approve leaves
+            if ($approver->role && ! $approver->hasPermission('approve leaves')) {
+                return $this->error('You do not have permission to approve leave requests.', 403);
+            }
+
+            // Prevent employees from approving their own leaves (unless SuperAdmin)
+            if ((int) $leave->user_id === (int) $approver->id && ! (strcasecmp($approver->role?->name ?? '', 'SuperAdmin') === 0)) {
+                return $this->error('You cannot approve your own leave request.', 403);
+            }
+
             $leave->update([
                 'status' => 'approved',
                 'approved_by' => $approver?->id,
@@ -402,7 +459,7 @@ class LeaveController extends Controller
 
             // Notify employee
             try {
-                Notification::create([
+                $notification = Notification::create([
                     'userId' => $leave->user_id,
                     'type' => 'leave_approved',
                     'title' => 'Leave Approved',
@@ -412,6 +469,13 @@ class LeaveController extends Controller
                     'actorId' => $approver?->id,
                     'isRead' => false,
                 ]);
+
+                if (class_exists(NotificationCreated::class)) {
+                    try {
+                        $notification->load('actor:id,name,profilePhoto');
+                        broadcast(new NotificationCreated($notification))->toOthers();
+                    } catch (\Throwable $tb) {}
+                }
             } catch (\Throwable $tn) {
                 // Ignore notification exception
             }
@@ -465,6 +529,25 @@ class LeaveController extends Controller
             $reason = $request->input('reason') ?? $request->input('rejection_reason') ?? 'Request rejected by HR/Manager';
             $rejecter = auth()->user();
 
+            if (! $rejecter) {
+                return $this->error('Unauthenticated', 401);
+            }
+
+            // Agents are not authorized to reject leaves
+            if ($rejecter->role && strcasecmp($rejecter->role->name, 'Agent') === 0) {
+                return $this->error('Agents are not authorized to reject leave requests.', 403);
+            }
+
+            // Check permission to reject leaves
+            if ($rejecter->role && ! $rejecter->hasPermission('approve leaves')) {
+                return $this->error('You do not have permission to reject leave requests.', 403);
+            }
+
+            // Prevent employees from rejecting their own leaves (unless SuperAdmin)
+            if ((int) $leave->user_id === (int) $rejecter->id && ! (strcasecmp($rejecter->role?->name ?? '', 'SuperAdmin') === 0)) {
+                return $this->error('You cannot reject your own leave request.', 403);
+            }
+
             $leave->update([
                 'status' => 'rejected',
                 'rejection_reason' => $reason,
@@ -474,7 +557,7 @@ class LeaveController extends Controller
 
             // Notify employee
             try {
-                Notification::create([
+                $notification = Notification::create([
                     'userId' => $leave->user_id,
                     'type' => 'leave_rejected',
                     'title' => 'Leave Rejected',
@@ -484,6 +567,13 @@ class LeaveController extends Controller
                     'actorId' => $rejecter?->id,
                     'isRead' => false,
                 ]);
+
+                if (class_exists(NotificationCreated::class)) {
+                    try {
+                        $notification->load('actor:id,name,profilePhoto');
+                        broadcast(new NotificationCreated($notification))->toOthers();
+                    } catch (\Throwable $tb) {}
+                }
             } catch (\Throwable $tn) {
                 // Ignore notification exception
             }

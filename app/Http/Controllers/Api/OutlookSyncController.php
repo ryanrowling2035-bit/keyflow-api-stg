@@ -6,6 +6,8 @@ use App\Constants\Constants;
 use App\Http\Controllers\Controller;
 use App\Models\CalendarEvent;
 use App\Models\OutlookConnection;
+use App\Services\OutlookCalendarService;
+use App\Services\OutlookEmailService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -64,9 +66,76 @@ class OutlookSyncController extends Controller
         }
     }
 
+    /**
+     * Sync Outlook calendar events into CRM.
+     */
+    public function syncCalendar(Request $request, OutlookCalendarService $calendarService)
+    {
+        try {
+            $connection = OutlookConnection::where('userId', user()->id)->first();
+
+            if (! $connection) {
+                return $this->error('No Outlook connection found', 422);
+            }
+
+            $startDate = $request->input('startDate');
+            $endDate = $request->input('endDate');
+
+            $result = $calendarService->pullEventsFromOutlook($connection, $startDate, $endDate);
+
+            if (isset($result['error'])) {
+                return $this->error($result['error'], 400);
+            }
+
+            // Update last sync time
+            $connection->update(['lastCalendarSyncAt' => now()]);
+
+            return $this->success($result, 'Calendar synced successfully');
+        } catch (\Exception $e) {
+            return $this->exceptionResponse('OutlookSyncController : syncCalendar', $e);
+        }
+    }
+
+    /**
+     * Sync Outlook emails into CRM.
+     */
+    public function syncEmail(Request $request, OutlookEmailService $emailService)
+    {
+        try {
+            $connection = OutlookConnection::where('userId', user()->id)->first();
+
+            if (! $connection) {
+                return $this->error('No Outlook connection found', 422);
+            }
+
+            $result = $emailService->pullEmailsFromOutlook($connection);
+
+            if (isset($result['error'])) {
+                return $this->error($result['error'], 400);
+            }
+
+            // Save emails to the UnmatchedEmail table or link them to Contacts
+            if (isset($result['emails']) && is_array($result['emails'])) {
+                $emailService->processAndLinkEmails($result['emails'], $connection);
+            }
+
+            // Update last sync time
+            $connection->update(['lastEmailSyncAt' => now()]);
+
+            return $this->success($result, 'Emails synced successfully');
+        } catch (\Exception $e) {
+            return $this->exceptionResponse('OutlookSyncController : syncEmail', $e);
+        }
+    }
+
     private function getMicrosoftProvider(): GenericProvider
     {
         $tenantId = env('AZURE_TENANT_ID', 'common');
+
+        $httpClient = new \GuzzleHttp\Client([
+            'verify' => !app()->isLocal(),
+            'timeout' => 30,
+        ]);
 
         return new GenericProvider([
             'clientId' => env('AZURE_CLIENT_ID'),
@@ -77,6 +146,8 @@ class OutlookSyncController extends Controller
             'urlResourceOwnerDetails' => 'https://graph.microsoft.com/v1.0/me',
             'scopes' => 'offline_access Mail.Read User.Read Calendars.ReadWrite',
             'scopeSeparator' => ' ',
+        ], [
+            'httpClient' => $httpClient,
         ]);
     }
 
@@ -132,7 +203,8 @@ class OutlookSyncController extends Controller
             $refreshToken = $accessToken->getRefreshToken();
             $expiresAt = now()->addSeconds($accessToken->getExpires() - time());
 
-            $response = Http::withToken($accessToken->getToken())
+            $httpRequest = app()->isLocal() ? Http::withoutVerifying() : Http::withToken($accessToken->getToken());
+            $response = $httpRequest->withToken($accessToken->getToken())
                 ->get('https://graph.microsoft.com/v1.0/me');
 
             $profile = $response->json();

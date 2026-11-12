@@ -2026,6 +2026,8 @@ class Constants
         'hr' => [
             'employee_birthday' => 'hr_employee_birthday_greeting',
             'employee_holiday' => 'hr_employee_holiday_greeting',
+            'employee_work_anniversary' => 'hr_employee_work_anniversary_greeting',
+            'employee_milestone_5year' => 'hr_employee_milestone_5year_greeting',
         ],
     ];
 
